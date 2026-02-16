@@ -1,11 +1,18 @@
-# Denali.health — Medicare Prior Authorization Assistant
+# PriorAuth — Medicare Prior Authorization Assistant
 
 ## Project Overview
 Medicare Prior Authorization Assistant MVP for Radiation Oncology.
 React 18 + Vite 5 + Tailwind CSS, deployed on Vercel.
+Product name in UI: "Denali.health" (branding only — no domain yet).
 
 ## Deployed URL
 https://pa-qash.vercel.app/
+
+## Supabase
+- Project URL: `https://jtpxzsrtumwtfqzbhfiz.supabase.co`
+- Dashboard: `https://supabase.com/dashboard/project/jtpxzsrtumwtfqzbhfiz`
+- Migration `001_initial_schema.sql` has been executed
+- Env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) set in Vercel
 
 ## Repository Structure
 - `prior-auth/` — main app (Vite + React)
