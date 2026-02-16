@@ -39,7 +39,25 @@ None. This is intentional for MVP — no server-side persistence, no backend dat
 - Storage key: `denali_pa_session`
 - Edge cases handled: corrupted JSON falls back to clean state; refresh mid-processing shows results with loading flags cleared
 
+## Authentication
+- **NPI-based login**: Provider enters their 10-digit NPI to sign in
+  - Luhn-10 format validation (client-side, instant)
+  - NPPES registry lookup to confirm NPI is real and active
+  - Provider name, specialty, address auto-populated from NPPES on login
+- **Session timeout**: 15 minutes of inactivity (no mouse/keyboard/touch)
+  - Warning displayed before logout
+  - Auto-logout clears all data (sessionStorage wiped)
+  - Tracked events: mousemove, mousedown, keydown, touchstart, scroll
+- **Superadmin / Demo mode**: For testing and demos without a real NPI
+  - Accessed via "Demo Mode" link on login screen
+  - Uses mock provider data (name: "Dr. Demo Admin", NPI: 0000000000)
+- **Auth storage**: `denali_pa_auth` key in sessionStorage
+  - Survives refresh, cleared on tab close
+  - Cleared explicitly on logout or timeout
+- **No passwords, no backend auth**: NPI is the credential (public registry validation)
+
 ## Key Decisions
+- NPI-based login — NPPES-validated, no passwords, 15-min inactivity timeout
 - No database — sessionStorage for refresh survival, cleared on tab close (no PHI lingers)
 - No .env.local in repo — keys live in Vercel env vars only
 - Model: claude-sonnet-4-20250514 for letter generation
