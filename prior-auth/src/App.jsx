@@ -1,7 +1,10 @@
 import { useReducer, useCallback, useEffect, useState } from 'react';
+import { supabase } from './lib/supabase';
+import { logAction } from './services/auditLog';
 import IntakeForm from './components/IntakeForm/IntakeForm';
 import Dashboard from './components/Dashboard';
 import LoginScreen from './components/LoginScreen';
+import TeamPanel from './components/TeamPanel';
 import Spinner from './components/ui/Spinner';
 import useInactivityTimeout from './hooks/useInactivityTimeout';
 
@@ -16,36 +19,12 @@ import { generateLetter } from './services/letterApi';
 // ─── Storage Keys ───────────────────────────────────────────────
 
 const SESSION_KEY = 'denali_pa_session';
-const AUTH_KEY = 'denali_pa_auth';
-
-// ─── Auth Helpers ───────────────────────────────────────────────
-
-function loadAuth() {
-  try {
-    const raw = sessionStorage.getItem(AUTH_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveAuth(provider) {
-  try {
-    sessionStorage.setItem(AUTH_KEY, JSON.stringify(provider));
-  } catch {
-    // Non-critical
-  }
-}
-
-function clearAllStorage() {
-  sessionStorage.removeItem(AUTH_KEY);
-  sessionStorage.removeItem(SESSION_KEY);
-}
+const DEMO_AUTH_KEY = 'denali_pa_auth';
 
 // ─── Case State Machine ─────────────────────────────────────────
 
 const INITIAL_STATE = {
-  view: 'intake', // intake | processing | results
+  view: 'intake',
   caseData: null,
   results: {
     eligibility: { result: null, loading: false, error: null },
@@ -75,9 +54,7 @@ function loadPersistedState() {
 function saveState(state) {
   try {
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(state));
-  } catch {
-    // Non-critical
-  }
+  } catch { /* non-critical */ }
 }
 
 function reducer(state, action) {
@@ -96,7 +73,6 @@ function reducer(state, action) {
           letter: { text: null, loading: false, error: null },
         },
       };
-
     case 'SET_RESULT':
       return {
         ...state,
@@ -106,38 +82,15 @@ function reducer(state, action) {
           [action.key]: { ...state.results[action.key], ...action.payload, loading: false },
         },
       };
-
     case 'SET_LETTER_LOADING':
-      return {
-        ...state,
-        results: {
-          ...state.results,
-          letter: { ...state.results.letter, loading: true, error: null },
-        },
-      };
-
+      return { ...state, results: { ...state.results, letter: { ...state.results.letter, loading: true, error: null } } };
     case 'SET_LETTER_RESULT':
-      return {
-        ...state,
-        results: {
-          ...state.results,
-          letter: { text: action.payload, loading: false, error: null },
-        },
-      };
-
+      return { ...state, results: { ...state.results, letter: { text: action.payload, loading: false, error: null } } };
     case 'SET_LETTER_ERROR':
-      return {
-        ...state,
-        results: {
-          ...state.results,
-          letter: { text: null, loading: false, error: action.payload },
-        },
-      };
-
+      return { ...state, results: { ...state.results, letter: { text: null, loading: false, error: action.payload } } };
     case 'NEW_CASE':
       sessionStorage.removeItem(SESSION_KEY);
       return INITIAL_STATE;
-
     default:
       return state;
   }
@@ -146,47 +99,132 @@ function reducer(state, action) {
 // ─── App ────────────────────────────────────────────────────────
 
 export default function App() {
-  const [provider, setProvider] = useState(loadAuth);
+  // Auth state: null = loading, false = not logged in, object = logged in
+  const [profile, setProfile] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [logoutMessage, setLogoutMessage] = useState(null);
+  const [showTeam, setShowTeam] = useState(false);
+
   const [state, dispatch] = useReducer(reducer, null, loadPersistedState);
-  const isLoggedIn = !!provider;
+  const isLoggedIn = !!profile;
 
   // Persist case state
+  useEffect(() => { saveState(state); }, [state]);
+
+  // ─── Supabase auth listener ─────────────────────────────────
+
   useEffect(() => {
-    saveState(state);
-  }, [state]);
+    if (!supabase) {
+      // No Supabase — check for demo auth in sessionStorage
+      try {
+        const demo = sessionStorage.getItem(DEMO_AUTH_KEY);
+        if (demo) setProfile(JSON.parse(demo));
+      } catch { /* ignore */ }
+      setAuthLoading(false);
+      return;
+    }
+
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        loadProfile(session.user.id);
+      } else {
+        setAuthLoading(false);
+      }
+    });
+
+    // Listen for auth changes (sign in, sign out, token refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        loadProfile(session.user.id);
+      } else {
+        setProfile(null);
+        setAuthLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  async function loadProfile(userId) {
+    const { data } = await supabase
+      .from('profiles')
+      .select('*, practices(*)')
+      .eq('id', userId)
+      .single();
+
+    if (data) {
+      const p = {
+        userId: data.id,
+        practiceId: data.practice_id,
+        name: data.full_name,
+        role: data.role,
+        specialty: data.practices?.specialty || null,
+        npi: data.practices?.npi || null,
+        practiceName: data.practices?.name || null,
+        address: data.practices?.address || null,
+        isDemo: false,
+      };
+      setProfile(p);
+
+      await logAction('login', { method: 'session' }, { userId: p.userId, practiceId: p.practiceId });
+    }
+    setAuthLoading(false);
+  }
 
   // ─── Auth handlers ──────────────────────────────────────────
 
-  const handleLogin = useCallback((providerData) => {
-    saveAuth(providerData);
-    setProvider(providerData);
+  const handleDemoLogin = useCallback((demoData) => {
+    sessionStorage.setItem(DEMO_AUTH_KEY, JSON.stringify(demoData));
+    setProfile(demoData);
     setLogoutMessage(null);
   }, []);
 
-  const handleLogout = useCallback(() => {
-    clearAllStorage();
-    setProvider(null);
-    dispatch({ type: 'NEW_CASE' });
-    setLogoutMessage('You have been signed out. All case data has been cleared.');
-  }, []);
+  const handleLogout = useCallback(async (message) => {
+    if (profile && !profile.isDemo) {
+      await logAction('logout', {}, { userId: profile.userId, practiceId: profile.practiceId });
+    }
 
-  const handleTimeout = useCallback(() => {
-    clearAllStorage();
-    setProvider(null);
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
+    sessionStorage.removeItem(DEMO_AUTH_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
+    setProfile(null);
     dispatch({ type: 'NEW_CASE' });
+    setShowTeam(false);
+    setLogoutMessage(message || 'You have been signed out. All case data has been cleared.');
+  }, [profile]);
+
+  const handleTimeout = useCallback(async () => {
+    if (profile && !profile.isDemo) {
+      await logAction('timeout', {}, { userId: profile.userId, practiceId: profile.practiceId });
+    }
+
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
+    sessionStorage.removeItem(DEMO_AUTH_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
+    setProfile(null);
+    dispatch({ type: 'NEW_CASE' });
+    setShowTeam(false);
     setLogoutMessage(
       'Your session expired after 15 minutes of inactivity. All case data has been cleared for security.'
     );
-  }, []);
+  }, [profile]);
 
-  // Inactivity timeout (only active when logged in)
   const { showWarning, remainingSeconds } = useInactivityTimeout(handleTimeout, isLoggedIn);
 
   // ─── Case handlers ─────────────────────────────────────────
 
   const handleSubmit = useCallback(async (caseData) => {
     dispatch({ type: 'SUBMIT_CASE', payload: caseData });
+
+    await logAction('case_submitted', {
+      cpt: caseData.cpt,
+      icd10: caseData.icd10,
+    }, { userId: profile?.userId, practiceId: profile?.practiceId });
 
     const checks = [
       checkEligibility({
@@ -214,10 +252,7 @@ export default function App() {
           payload: {
             ncdResult: ncdSettled.status === 'fulfilled' ? ncdSettled.value : null,
             lcdResult: lcdSettled.status === 'fulfilled' ? lcdSettled.value : null,
-            error:
-              ncdSettled.status === 'rejected' && lcdSettled.status === 'rejected'
-                ? 'Coverage lookup failed'
-                : null,
+            error: ncdSettled.status === 'rejected' && lcdSettled.status === 'rejected' ? 'Coverage lookup failed' : null,
           },
         });
       }),
@@ -242,36 +277,24 @@ export default function App() {
     ];
 
     await Promise.allSettled(checks);
-  }, []);
+
+    await logAction('checks_completed', {
+      cpt: caseData.cpt,
+      icd10: caseData.icd10,
+    }, { userId: profile?.userId, practiceId: profile?.practiceId });
+  }, [profile]);
 
   const handleGenerateLetter = useCallback(async () => {
     if (!state.caseData) return;
-
     dispatch({ type: 'SET_LETTER_LOADING' });
 
     try {
       const { results, caseData } = state;
       const result = await generateLetter({
-        patientInfo: {
-          mbi: caseData.mbi,
-          firstName: caseData.firstName,
-          lastName: caseData.lastName,
-          dob: caseData.dob,
-        },
-        providerInfo: {
-          npi: caseData.npi,
-          name: caseData.providerName || 'Provider',
-          specialty: caseData.providerSpecialty || '',
-          address: caseData.providerAddress || '',
-        },
-        icd10: {
-          code: caseData.icd10,
-          description: caseData.icd10Description || '',
-        },
-        cpt: {
-          code: caseData.cpt,
-          description: '',
-        },
+        patientInfo: { mbi: caseData.mbi, firstName: caseData.firstName, lastName: caseData.lastName, dob: caseData.dob },
+        providerInfo: { npi: caseData.npi, name: caseData.providerName || 'Provider', specialty: caseData.providerSpecialty || '', address: caseData.providerAddress || '' },
+        icd10: { code: caseData.icd10, description: caseData.icd10Description || '' },
+        cpt: { code: caseData.cpt, description: '' },
         ncdText: results.coverage.ncdResult?.results?.[0]?.title || '',
         lcdText: results.coverage.lcdResult?.results?.[0]?.title || '',
         clinicalSummary: caseData.clinicalSummary || '',
@@ -279,14 +302,29 @@ export default function App() {
       });
 
       dispatch({ type: 'SET_LETTER_RESULT', payload: result.letterText });
+
+      await logAction('letter_generated', {
+        cpt: caseData.cpt,
+        icd10: caseData.icd10,
+      }, { userId: profile?.userId, practiceId: profile?.practiceId });
     } catch (err) {
       dispatch({ type: 'SET_LETTER_ERROR', payload: err.message });
     }
-  }, [state]);
+  }, [state, profile]);
 
   const handleNewCase = useCallback(() => {
     dispatch({ type: 'NEW_CASE' });
   }, []);
+
+  // ─── Loading State ─────────────────────────────────────────
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Spinner size="lg" label="Loading..." />
+      </div>
+    );
+  }
 
   // ─── Render: Login Screen ──────────────────────────────────
 
@@ -304,15 +342,22 @@ export default function App() {
             </button>
           </div>
         )}
-        <LoginScreen onLogin={handleLogin} />
+        <LoginScreen onDemoLogin={handleDemoLogin} />
       </>
     );
   }
 
   // ─── Render: Authenticated App ─────────────────────────────
 
+  const ROLE_DISPLAY = { provider: 'Provider', ma: 'MA', psr: 'PSR', rn: 'RN', admin: 'Admin' };
+
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Team Panel Modal */}
+      {showTeam && profile.practiceId && (
+        <TeamPanel profile={profile} onClose={() => setShowTeam(false)} />
+      )}
+
       {/* Inactivity Warning Banner */}
       {showWarning && (
         <div className="fixed top-0 left-0 right-0 z-50 bg-red-600 text-white px-4 py-3 text-center shadow-lg">
@@ -333,21 +378,39 @@ export default function App() {
             <p className="text-xs text-gray-400 font-mono">Medicare PA Assistant — Original FFS</p>
           </div>
           <div className="flex items-center gap-4">
-            {/* Provider Info */}
+            {/* Provider / User Info */}
             <div className="text-right text-xs">
               <p className="font-medium text-gray-700">
-                {provider.name}
-                {provider.isDemo && (
+                {profile.name}
+                {profile.isDemo && (
                   <span className="ml-1.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-mono">
                     DEMO
                   </span>
                 )}
+                {!profile.isDemo && (
+                  <span className="ml-1.5 px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] font-mono">
+                    {ROLE_DISPLAY[profile.role] || profile.role}
+                  </span>
+                )}
               </p>
-              <p className="text-gray-400">{provider.specialty || `NPI: ${provider.npi}`}</p>
+              <p className="text-gray-400">
+                {profile.practiceName || profile.specialty || (profile.npi && `NPI: ${profile.npi}`) || ''}
+              </p>
             </div>
+
+            {/* Team button (providers/admins only) */}
+            {(profile.role === 'provider' || profile.role === 'admin') && !profile.isDemo && (
+              <button
+                onClick={() => setShowTeam(true)}
+                className="px-3 py-1.5 text-xs text-denali-600 border border-denali-200 rounded-lg hover:bg-denali-50 transition-colors"
+              >
+                Team
+              </button>
+            )}
+
             {/* Sign Out */}
             <button
-              onClick={handleLogout}
+              onClick={() => handleLogout()}
               className="px-3 py-1.5 text-xs text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-gray-700 transition-colors"
             >
               Sign Out
