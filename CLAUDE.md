@@ -28,7 +28,16 @@ For local dev, use `vercel dev` (reads from Vercel env vars) or create .env.loca
 - `POST /api/eligibility` — proxies Stedi 270/271 for Medicare eligibility
 - `POST /api/generate-letter` — proxies Anthropic Claude for medical necessity letter
 
+## Database
+None. This is intentional for MVP:
+- All state lives in React memory (useReducer in App.jsx), cleared on refresh
+- No PHI storage, no server-side persistence, no backend database
+- Session-only architecture — no patient data is saved anywhere
+
 ## Key Decisions
+- No database — session-only, in-memory state (no PHI storage)
 - No .env.local in repo — keys live in Vercel env vars only
 - Model: claude-sonnet-4-20250514 for letter generation
 - Stedi endpoint: https://healthcare.us.stedi.com/2024-04-01/change/medicalnetwork/eligibility/v3
+- Client-side public APIs: NPPES, CMS Coverage, ICD-10 (no keys needed)
+- Static data for MVP: PA-required codes, NCCI edits as JSON files, updated manually
