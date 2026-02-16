@@ -1,0 +1,37 @@
+{
+  "metadata": {
+    "description": "NCCI Medically Unlikely Edits (MUE) — Oncology + Imaging Subset",
+    "lastUpdated": "2026-01-01",
+    "source": "CMS NCCI MUE Files",
+    "adjudicationTypes": {
+      "1": "Claim line — total units across all lines for same DOS",
+      "2": "Day — total units for same code same DOS across claims",
+      "3": "Date of service — absolute per-day limit"
+    }
+  },
+  "edits": [
+    { "cpt": "77373", "mueValue": 1, "adjudicationType": 3, "rationale": "SBRT delivery — one fraction per session" },
+    { "cpt": "77385", "mueValue": 1, "adjudicationType": 3, "rationale": "IMRT delivery — one treatment session per day" },
+    { "cpt": "77386", "mueValue": 1, "adjudicationType": 3, "rationale": "IMRT delivery, complex — one session per day" },
+    { "cpt": "77401", "mueValue": 1, "adjudicationType": 3, "rationale": "Radiation delivery, superficial — one per day" },
+    { "cpt": "77402", "mueValue": 1, "adjudicationType": 3, "rationale": "Radiation delivery, MeV — one per day" },
+    { "cpt": "77412", "mueValue": 1, "adjudicationType": 3, "rationale": "Radiation delivery, complex MeV — one per day" },
+    { "cpt": "77014", "mueValue": 2, "adjudicationType": 2, "rationale": "CT guidance for radiation — up to 2 per day" },
+    { "cpt": "77280", "mueValue": 1, "adjudicationType": 2, "rationale": "Simulation, simple — one per day" },
+    { "cpt": "77290", "mueValue": 1, "adjudicationType": 2, "rationale": "Simulation, complex — one per day" },
+    { "cpt": "77295", "mueValue": 1, "adjudicationType": 2, "rationale": "3D treatment plan — one per course" },
+    { "cpt": "77300", "mueValue": 3, "adjudicationType": 2, "rationale": "Dosimetry calculation — up to 3 per day" },
+    { "cpt": "77520", "mueValue": 1, "adjudicationType": 3, "rationale": "Proton treatment, simple — one per day" },
+    { "cpt": "77522", "mueValue": 1, "adjudicationType": 3, "rationale": "Proton treatment with compensation — one per day" },
+    { "cpt": "77523", "mueValue": 1, "adjudicationType": 3, "rationale": "Proton treatment, intermediate — one per day" },
+    { "cpt": "77525", "mueValue": 1, "adjudicationType": 3, "rationale": "Proton treatment, complex — one per day" },
+    { "cpt": "78816", "mueValue": 1, "adjudicationType": 3, "rationale": "PET imaging, whole body — one per day" },
+    { "cpt": "78815", "mueValue": 1, "adjudicationType": 3, "rationale": "PET imaging, limited — one per day" },
+    { "cpt": "78814", "mueValue": 1, "adjudicationType": 3, "rationale": "PET with CT, limited — one per day" },
+    { "cpt": "70553", "mueValue": 1, "adjudicationType": 3, "rationale": "MRI brain w/wo contrast — one per day" },
+    { "cpt": "70551", "mueValue": 1, "adjudicationType": 3, "rationale": "MRI brain without contrast — one per day" },
+    { "cpt": "74177", "mueValue": 1, "adjudicationType": 3, "rationale": "CT abdomen/pelvis with contrast — one per day" },
+    { "cpt": "74178", "mueValue": 1, "adjudicationType": 3, "rationale": "CT abdomen/pelvis w/wo contrast — one per day" },
+    { "cpt": "71260", "mueValue": 1, "adjudicationType": 3, "rationale": "CT chest with contrast — one per day" }
+  ]
+}

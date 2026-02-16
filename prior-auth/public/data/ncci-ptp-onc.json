@@ -1,0 +1,160 @@
+{
+  "metadata": {
+    "description": "NCCI Procedure-to-Procedure (PTP) Edits — Oncology + Imaging Subset",
+    "lastUpdated": "2026-01-01",
+    "source": "CMS NCCI PTP Edit Files (Practitioner + Hospital Outpatient)",
+    "codeRanges": "77xxx (radiation therapy), 78xxx (nuclear medicine), 70xxx-74xxx (imaging)"
+  },
+  "edits": [
+    {
+      "col1": "77385",
+      "col2": "77014",
+      "modifier": 1,
+      "effectiveDate": "2020-01-01",
+      "deletionDate": null,
+      "context": "practitioner",
+      "col1Desc": "IMRT delivery, simple",
+      "col2Desc": "CT guidance for radiation therapy"
+    },
+    {
+      "col1": "77386",
+      "col2": "77014",
+      "modifier": 1,
+      "effectiveDate": "2020-01-01",
+      "deletionDate": null,
+      "context": "practitioner",
+      "col1Desc": "IMRT delivery, complex",
+      "col2Desc": "CT guidance for radiation therapy"
+    },
+    {
+      "col1": "77373",
+      "col2": "77014",
+      "modifier": 1,
+      "effectiveDate": "2020-01-01",
+      "deletionDate": null,
+      "context": "practitioner",
+      "col1Desc": "SBRT delivery",
+      "col2Desc": "CT guidance for radiation therapy"
+    },
+    {
+      "col1": "77385",
+      "col2": "77280",
+      "modifier": 0,
+      "effectiveDate": "2020-01-01",
+      "deletionDate": null,
+      "context": "practitioner",
+      "col1Desc": "IMRT delivery, simple",
+      "col2Desc": "Simulation, simple"
+    },
+    {
+      "col1": "77386",
+      "col2": "77280",
+      "modifier": 0,
+      "effectiveDate": "2020-01-01",
+      "deletionDate": null,
+      "context": "practitioner",
+      "col1Desc": "IMRT delivery, complex",
+      "col2Desc": "Simulation, simple"
+    },
+    {
+      "col1": "77385",
+      "col2": "77290",
+      "modifier": 0,
+      "effectiveDate": "2020-01-01",
+      "deletionDate": null,
+      "context": "practitioner",
+      "col1Desc": "IMRT delivery, simple",
+      "col2Desc": "Simulation, complex"
+    },
+    {
+      "col1": "77402",
+      "col2": "77401",
+      "modifier": 0,
+      "effectiveDate": "2020-01-01",
+      "deletionDate": null,
+      "context": "practitioner",
+      "col1Desc": "Radiation treatment delivery, MeV",
+      "col2Desc": "Radiation treatment delivery, superficial"
+    },
+    {
+      "col1": "77412",
+      "col2": "77401",
+      "modifier": 0,
+      "effectiveDate": "2020-01-01",
+      "deletionDate": null,
+      "context": "practitioner",
+      "col1Desc": "Radiation treatment delivery, complex MeV",
+      "col2Desc": "Radiation treatment delivery, superficial"
+    },
+    {
+      "col1": "77412",
+      "col2": "77402",
+      "modifier": 0,
+      "effectiveDate": "2020-01-01",
+      "deletionDate": null,
+      "context": "practitioner",
+      "col1Desc": "Radiation treatment delivery, complex MeV",
+      "col2Desc": "Radiation treatment delivery, MeV"
+    },
+    {
+      "col1": "78816",
+      "col2": "78815",
+      "modifier": 0,
+      "effectiveDate": "2020-01-01",
+      "deletionDate": null,
+      "context": "practitioner",
+      "col1Desc": "PET imaging, whole body",
+      "col2Desc": "PET imaging, limited area"
+    },
+    {
+      "col1": "78816",
+      "col2": "78814",
+      "modifier": 0,
+      "effectiveDate": "2020-01-01",
+      "deletionDate": null,
+      "context": "practitioner",
+      "col1Desc": "PET imaging, whole body",
+      "col2Desc": "PET imaging with CT, limited"
+    },
+    {
+      "col1": "74178",
+      "col2": "74177",
+      "modifier": 0,
+      "effectiveDate": "2020-01-01",
+      "deletionDate": null,
+      "context": "practitioner",
+      "col1Desc": "CT abdomen/pelvis without and with contrast",
+      "col2Desc": "CT abdomen/pelvis with contrast"
+    },
+    {
+      "col1": "71260",
+      "col2": "71250",
+      "modifier": 0,
+      "effectiveDate": "2020-01-01",
+      "deletionDate": null,
+      "context": "practitioner",
+      "col1Desc": "CT chest with contrast",
+      "col2Desc": "CT chest without contrast"
+    },
+    {
+      "col1": "77520",
+      "col2": "77402",
+      "modifier": 0,
+      "effectiveDate": "2020-01-01",
+      "deletionDate": null,
+      "context": "practitioner",
+      "col1Desc": "Proton treatment, simple",
+      "col2Desc": "Radiation treatment delivery, MeV"
+    },
+    {
+      "col1": "77373",
+      "col2": "77385",
+      "modifier": 0,
+      "effectiveDate": "2020-01-01",
+      "deletionDate": null,
+      "context": "practitioner",
+      "col1Desc": "SBRT delivery",
+      "col2Desc": "IMRT delivery, simple"
+    }
+  ]
+}
