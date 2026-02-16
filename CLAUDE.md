@@ -29,13 +29,18 @@ For local dev, use `vercel dev` (reads from Vercel env vars) or create .env.loca
 - `POST /api/generate-letter` — proxies Anthropic Claude for medical necessity letter
 
 ## Database
-None. This is intentional for MVP:
-- All state lives in React memory (useReducer in App.jsx), cleared on refresh
-- No PHI storage, no server-side persistence, no backend database
-- Session-only architecture — no patient data is saved anywhere
+None. This is intentional for MVP — no server-side persistence, no backend database.
+
+## Session Persistence
+- State is persisted to `sessionStorage` (browser-only, per-tab) via `App.jsx`
+- Survives page refresh — provider won't lose intake data or check results
+- Automatically cleared when the browser tab is closed (no PHI lingers)
+- "New Case" button explicitly clears storage
+- Storage key: `denali_pa_session`
+- Edge cases handled: corrupted JSON falls back to clean state; refresh mid-processing shows results with loading flags cleared
 
 ## Key Decisions
-- No database — session-only, in-memory state (no PHI storage)
+- No database — sessionStorage for refresh survival, cleared on tab close (no PHI lingers)
 - No .env.local in repo — keys live in Vercel env vars only
 - Model: claude-sonnet-4-20250514 for letter generation
 - Stedi endpoint: https://healthcare.us.stedi.com/2024-04-01/change/medicalnetwork/eligibility/v3

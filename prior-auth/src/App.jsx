@@ -1,4 +1,4 @@
-import { useReducer, useCallback } from 'react';
+import { useReducer, useCallback, useEffect } from 'react';
 import IntakeForm from './components/IntakeForm/IntakeForm';
 import Dashboard from './components/Dashboard';
 import Spinner from './components/ui/Spinner';
@@ -13,6 +13,8 @@ import { generateLetter } from './services/letterApi';
 
 // ─── State Machine ──────────────────────────────────────────────
 
+const STORAGE_KEY = 'denali_pa_session';
+
 const INITIAL_STATE = {
   view: 'intake', // intake | processing | results
   caseData: null,
@@ -25,6 +27,33 @@ const INITIAL_STATE = {
     letter: { text: null, loading: false, error: null },
   },
 };
+
+/** Restore state from sessionStorage, falling back to INITIAL_STATE. */
+function loadPersistedState() {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return INITIAL_STATE;
+    const saved = JSON.parse(raw);
+    // If the page was refreshed mid-processing, show results (checks already fired)
+    if (saved.view === 'processing') saved.view = 'results';
+    // Clear any stale loading flags so the UI doesn't show infinite spinners
+    for (const key of Object.keys(saved.results || {})) {
+      if (saved.results[key]?.loading) saved.results[key].loading = false;
+    }
+    return saved;
+  } catch {
+    return INITIAL_STATE;
+  }
+}
+
+/** Persist state to sessionStorage (called after every dispatch). */
+function saveState(state) {
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // Storage full or unavailable — non-critical, ignore silently
+  }
+}
 
 function reducer(state, action) {
   switch (action.type) {
@@ -81,6 +110,7 @@ function reducer(state, action) {
       };
 
     case 'NEW_CASE':
+      sessionStorage.removeItem(STORAGE_KEY);
       return INITIAL_STATE;
 
     default:
@@ -91,7 +121,12 @@ function reducer(state, action) {
 // ─── App ────────────────────────────────────────────────────────
 
 export default function App() {
-  const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
+  const [state, dispatch] = useReducer(reducer, null, loadPersistedState);
+
+  // Persist state to sessionStorage after every change
+  useEffect(() => {
+    saveState(state);
+  }, [state]);
 
   // Run all Phase 2-3 checks concurrently after intake submission
   const handleSubmit = useCallback(async (caseData) => {
