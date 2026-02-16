@@ -1,8 +1,8 @@
 {
-  "name": "denali-prior-auth",
+  "name": "prior-auth",
   "private": true,
   "version": "0.1.0",
-  "description": "Denali.health Medicare Prior Authorization Assistant — MVPfor Radiation Oncology",
+  "description": "Denali.health Medicare Prior Authorization Assistant — MVP for Radiation Oncology",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -4,7 +4,7 @@
 > Maps to the 5-phase flowchart and the 12-step build order in `medicare_onco_PA`.
 
 ```
-denali-prior-auth/
+prior-auth/
 │
 ├── .env.example                          # Template — never real keys
 ├── .env.local                            # Local dev keys (GITIGNORED)
