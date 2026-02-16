@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Medicare Oncology Prior Auth — Provider Data Flow</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0c0e13;
+  --surface: #14171f;
+  --surface2: #1a1e28;
+  --border: #2a2f3d;
+  --border-light: #353b4d;
+  --text: #e8eaf0;
+  --text-dim: #8b90a0;
+  --text-muted: #5c6175;
+
+  --green: #34d399;
+  --green-dim: rgba(52,211,153,0.12);
+  --green-glow: rgba(52,211,153,0.25);
+
+  --amber: #fbbf24;
+  --amber-dim: rgba(251,191,36,0.12);
+  --amber-glow: rgba(251,191,36,0.2);
+
+  --red: #f87171;
+  --red-dim: rgba(248,113,113,0.10);
+  --red-glow: rgba(248,113,113,0.15);
+
+  --blue: #60a5fa;
+  --blue-dim: rgba(96,165,250,0.10);
+
+  --cyan: #22d3ee;
+  --violet: #a78bfa;
+
+  --arrow: #4b5170;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+.page {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 40px 32px 80px;
+}
+
+/* HEADER */
+.hdr {
+  margin-bottom: 36px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--border);
+}
+.hdr h1 {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.hdr-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+.hdr-scope {
+  display: flex;
+  gap: 16px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.scope-tag {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  padding: 4px 12px;
+  border-radius: 4px;
+  border: 1px solid;
+}
+.scope-tag.s1 { color: var(--cyan); border-color: rgba(34,211,238,0.3); background: rgba(34,211,238,0.06); }
+.scope-tag.s2 { color: var(--violet); border-color: rgba(167,139,250,0.3); background: rgba(167,139,250,0.06); }
+.scope-tag.s3 { color: var(--amber); border-color: rgba(251,191,36,0.3); background: rgba(251,191,36,0.06); }
+
+/* LEGEND */
+.legend {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 32px;
+  flex-wrap: wrap;
+}
+.leg-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.leg-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 2px solid;
+}
+.leg-dot.g { background: var(--green-dim); border-color: var(--green); }
+.leg-dot.a { background: var(--amber-dim); border-color: var(--amber); }
+.leg-dot.r { background: var(--red-dim); border-color: var(--red); }
+.leg-dot.b { background: var(--blue-dim); border-color: var(--blue); }
+
+/* FLOW CONTAINER */
+.flow-wrap {
+  position: relative;
+  overflow-x: auto;
+  padding-bottom: 20px;
+}
+
+/* SVG ARROWS OVERLAY */
+.svg-arrows {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* PHASE ROWS */
+.phase {
+  display: flex;
+  align-items: stretch;
+  margin-bottom: 2px;
+  min-height: 140px;
+  position: relative;
+}
+
+.phase-label {
+  flex-shrink: 0;
+  width: 160px;
+  padding: 16px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-right: 3px solid;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+}
+.phase-label.p1 { border-right-color: var(--text-muted); }
+.phase-label.p2 { border-right-color: var(--red); }
+.phase-label.p3 { border-right-color: var(--amber); }
+.phase-label.p4 { border-right-color: var(--green); }
+.phase-label.p5 { border-right-color: var(--blue); }
+
+.phase-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.phase-label.p1 .phase-num { color: var(--text-muted); }
+.phase-label.p2 .phase-num { color: var(--red); }
+.phase-label.p3 .phase-num { color: var(--amber); }
+.phase-label.p4 .phase-num { color: var(--green); }
+.phase-label.p5 .phase-num { color: var(--blue); }
+
+.phase-name {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text);
+}
+.phase-desc {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* NODE TRACK */
+.node-track {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 12px 16px;
+  flex: 1;
+  overflow-x: auto;
+  position: relative;
+  z-index: 2;
+}
+
+/* NODES */
+.node {
+  flex-shrink: 0;
+  border-radius: 8px;
+  padding: 12px 14px;
+  width: 220px;
+  border: 1.5px solid;
+  position: relative;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.node:hover {
+  transform: translateY(-2px);
+  z-index: 10;
+}
+
+.node.green {
+  background: var(--green-dim);
+  border-color: rgba(52,211,153,0.35);
+}
+.node.green:hover { box-shadow: 0 4px 20px var(--green-glow); }
+
+.node.amber {
+  background: var(--amber-dim);
+  border-color: rgba(251,191,36,0.3);
+}
+.node.amber:hover { box-shadow: 0 4px 20px var(--amber-glow); }
+
+.node.red {
+  background: var(--red-dim);
+  border-color: rgba(248,113,113,0.25);
+}
+.node.red:hover { box-shadow: 0 4px 20px var(--red-glow); }
+
+.node.blue {
+  background: var(--blue-dim);
+  border-color: rgba(96,165,250,0.25);
+}
+
+/* Node internals */
+.n-status {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.node.green .n-status { color: var(--green); }
+.node.amber .n-status { color: var(--amber); }
+.node.red .n-status { color: var(--red); }
+.node.blue .n-status { color: var(--blue); }
+
+.n-title {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-bottom: 4px;
+  color: var(--text);
+}
+
+.n-api {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 3px;
+  display: inline-block;
+  margin-bottom: 6px;
+  background: rgba(255,255,255,0.05);
+  color: var(--text-dim);
+}
+
+.n-detail {
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.n-io {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.n-io-in { color: var(--cyan); }
+.n-io-out { color: var(--violet); }
+
+/* ARROW CONNECTORS */
+.arr {
+  flex-shrink: 0;
+  width: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.arr-line {
+  width: 32px;
+  height: 2px;
+  background: var(--arrow);
+  position: relative;
+}
+.arr-line::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: -4px;
+  border: 5px solid transparent;
+  border-left: 6px solid var(--arrow);
+}
+
+.arr-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  white-space: nowrap;
+  letter-spacing: 0.3px;
+}
+
+/* DECISION */
+.diamond-wrap {
+  flex-shrink: 0;
+  width: 90px;
+  height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.diamond-shape {
+  width: 64px;
+  height: 64px;
+  transform: rotate(45deg);
+  border: 2px solid var(--blue);
+  background: var(--blue-dim);
+  border-radius: 4px;
+}
+.diamond-text {
+  position: absolute;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--blue);
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* VERTICAL PHASE ARROWS */
+.v-arrow {
+  display: flex;
+  align-items: center;
+  padding-left: 80px;
+  height: 24px;
+  position: relative;
+}
+.v-arrow-line {
+  width: 2px;
+  height: 16px;
+  background: var(--arrow);
+  position: relative;
+}
+.v-arrow-line::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: -4px;
+  border: 5px solid transparent;
+  border-top: 6px solid var(--arrow);
+}
+.v-arrow-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8px;
+  color: var(--text-muted);
+  margin-left: 8px;
+  letter-spacing: 0.3px;
+}
+
+/* SUMMARY SECTION */
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 36px;
+}
+.sum-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+}
+.sum-card-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+.sum-card.have .sum-card-title { color: var(--green); }
+.sum-card.need .sum-card-title { color: var(--red); }
+.sum-card.partial .sum-card-title { color: var(--amber); }
+
+.sum-list {
+  list-style: none;
+}
+.sum-list li {
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.sum-list li:last-child { border-bottom: none; }
+.sum-list .src {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+/* MVP CALLOUT */
+.mvp-box {
+  margin-top: 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--cyan);
+  border-radius: 8px;
+  padding: 24px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+.mvp-col h3 {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.mvp-col.left h3 { color: var(--green); }
+.mvp-col.right h3 { color: var(--red); }
+.mvp-col p {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.7;
+}
+.mvp-col .hl { color: var(--text); font-weight: 600; }
+
+@media (max-width: 900px) {
+  .phase { flex-direction: column; }
+  .phase-label { width: 100%; border-right: none; border-bottom: 3px solid; }
+  .summary-grid { grid-template-columns: 1fr; }
+  .mvp-box { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- HEADER -->
+<div class="hdr">
+  <h1>Medicare Oncology Prior Authorization — Provider Data Flow</h1>
+  <div class="hdr-sub">Qash Solutions / Denali.health — System Architecture</div>
+  <div class="hdr-scope">
+    <span class="scope-tag s1">PAYER: Original Medicare FFS only</span>
+    <span class="scope-tag s2">SPECIALTY: Radiation Oncology + Diagnostic Imaging</span>
+    <span class="scope-tag s3">USER: Auth coordinator at small practice / hospital</span>
+  </div>
+</div>
+
+<!-- LEGEND -->
+<div class="legend">
+  <div class="leg-item"><div class="leg-dot g"></div>HAVE — MCP connector built</div>
+  <div class="leg-item"><div class="leg-dot a"></div>PARTIAL — Sandbox / needs license</div>
+  <div class="leg-item"><div class="leg-dot r"></div>NEED — Must build or buy</div>
+  <div class="leg-item"><div class="leg-dot b"></div>DECISION — Agent logic</div>
+  <div class="leg-item" style="margin-left:16px;padding-left:16px;border-left:1px solid var(--border);">
+    <span style="color:var(--cyan);font-family:'JetBrains Mono',monospace;font-size:9px;">IN ←</span> = data received
+  </div>
+  <div class="leg-item">
+    <span style="color:var(--violet);font-family:'JetBrains Mono',monospace;font-size:9px;">→ OUT</span> = data emitted
+  </div>
+</div>
+
+<!-- FLOW -->
+<div class="flow-wrap">
+
+<!-- ═══════════════ PHASE 1: INTAKE ═══════════════ -->
+<div class="phase">
+  <div class="phase-label p1">
+    <div class="phase-num">Phase 1</div>
+    <div class="phase-name">Intake</div>
+    <div class="phase-desc">Practice → System</div>
+  </div>
+  <div class="node-track">
+
+    <div class="node red">
+      <div class="n-status">⬚ Need — MVP workaround</div>
+      <div class="n-title">Structured Intake Form</div>
+      <div class="n-api">Web form / API endpoint</div>
+      <div class="n-detail">Auth coordinator enters: Patient Medicare ID, ICD-10 dx code, CPT procedure, ordering NPI, practice ZIP, clinical notes summary.</div>
+      <div class="n-io">
+        <span class="n-io-in">IN ← manual entry by staff</span>
+        <span class="n-io-out">→ OUT case_object{patient_id, dx, px, npi, location}</span>
+      </div>
+    </div>
+
+    <div class="arr"><div class="arr-line"></div><div class="arr-label">case_obj</div></div>
+
+    <div class="node blue">
+      <div class="n-status">◆ Decision logic</div>
+      <div class="n-title">Case Router</div>
+      <div class="n-api">Agent orchestrator</div>
+      <div class="n-detail">Classify: diagnostic imaging (PET, CT, MRI) vs radiation therapy (IMRT, SBRT, proton) vs drug admin (Part B injectable). Routes to correct validation path.</div>
+      <div class="n-io">
+        <span class="n-io-in">IN ← case_object</span>
+        <span class="n-io-out">→ OUT case_type + pipeline_id</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="v-arrow"><div class="v-arrow-line"></div><div class="v-arrow-label">case_object passes down to Phase 2</div></div>
+
+<!-- ═══════════════ PHASE 2: VERIFY ═══════════════ -->
+<div class="phase">
+  <div class="phase-label p2">
+    <div class="phase-num">Phase 2</div>
+    <div class="phase-name">Verify Patient + Provider</div>
+    <div class="phase-desc">Is this billable?</div>
+  </div>
+  <div class="node-track">
+
+    <div class="node green">
+      <div class="n-status">✓ Ready — Stedi test keys active</div>
+      <div class="n-title">Patient Eligibility (270/271)</div>
+      <div class="n-api">Stedi API → CMS HETS</div>
+      <div class="n-detail">Confirm: Active Part A+B? Original FFS or MA? If MA → STOP, different rules. Dual-eligible? Secondary payer? <b>Stedi test API keys obtained. Prod on demand.</b></div>
+      <div class="n-io">
+        <span class="n-io-in">IN ← patient_medicare_id</span>
+        <span class="n-io-out">→ OUT {eligible:bool, payer_type:"FFS"|"MA", parts:["A","B"]}</span>
+      </div>
+    </div>
+
+    <div class="arr"><div class="arr-line"></div><div class="arr-label">if FFS ✓</div></div>
+
+    <div class="node green">
+      <div class="n-status">✓ Have — MCP built</div>
+      <div class="n-title">NPI Validation</div>
+      <div class="n-api">MCP → NPI Registry</div>
+      <div class="n-detail"><b>npi_validate</b> → Luhn check. <b>npi_lookup</b> → Active? Specialty taxonomy match? Medicare-enrolled via PECOS?</div>
+      <div class="n-io">
+        <span class="n-io-in">IN ← ordering_npi from case_object</span>
+        <span class="n-io-out">→ OUT {active:bool, specialty:"radiation_onc", state:"TX"}</span>
+      </div>
+    </div>
+
+    <div class="arr"><div class="arr-line"></div><div class="arr-label">npi valid</div></div>
+
+    <div class="node green">
+      <div class="n-status">✓ Have — MCP built</div>
+      <div class="n-title">ICD-10 Validation</div>
+      <div class="n-api">MCP → ICD-10 Codes</div>
+      <div class="n-detail"><b>validate_code</b> → HIPAA billable? <b>get_hierarchy</b> → Max specificity? E.g. C34.11 not C34.1 (header).</div>
+      <div class="n-io">
+        <span class="n-io-in">IN ← dx_code from case_object</span>
+        <span class="n-io-out">→ OUT {valid:bool, billable:bool, description:"..."}</span>
+      </div>
+    </div>
+
+    <div class="arr"><div class="arr-line"></div><div class="arr-label">dx valid</div></div>
+
+    <div class="node amber">
+      <div class="n-status">⚠ Partial — needs AMA license</div>
+      <div class="n-title">CPT/HCPCS Validation</div>
+      <div class="n-api">AMA CPT Data Files</div>
+      <div class="n-detail">Validate procedure code exists, get descriptor. Map "PET/CT" → 78816. Without this, NCD/LCD matching fails. <b>Blocker: $100–$50K/yr AMA license.</b></div>
+      <div class="n-io">
+        <span class="n-io-in">IN ← px_code from case_object</span>
+        <span class="n-io-out">→ OUT {valid:bool, descriptor:"PET FDG tumor imaging"}</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="v-arrow"><div class="v-arrow-line"></div><div class="v-arrow-label">verified {patient, provider, dx, px} passes to Phase 3</div></div>
+
+<!-- ═══════════════ PHASE 3: COVERAGE DETERMINATION ═══════════════ -->
+<div class="phase">
+  <div class="phase-label p4">
+    <div class="phase-num">Phase 3 ★</div>
+    <div class="phase-name">Coverage Determination</div>
+    <div class="phase-desc">Your moat — policy engine</div>
+  </div>
+  <div class="node-track">
+
+    <div class="node red">
+      <div class="n-status">⬚ Need — free CMS data</div>
+      <div class="n-title">Prior Auth Required?</div>
+      <div class="n-api">CMS Prior Auth Required List</div>
+      <div class="n-detail">Check if this CPT code requires prior auth under Medicare FFS. Most oncology procedures are claims-adjudicated. ~50–100 codes require PA (expanding).</div>
+      <div class="n-io">
+        <span class="n-io-in">IN ← px_code (CPT)</span>
+        <span class="n-io-out">→ OUT {pa_required:bool, effective_date}</span>
+      </div>
+    </div>
+
+    <div class="arr"><div class="arr-line"></div><div class="arr-label">regardless</div></div>
+
+    <div class="node green">
+      <div class="n-status">✓ Have — MCP built</div>
+      <div class="n-title">NCD Lookup</div>
+      <div class="n-api">MCP → CMS Coverage</div>
+      <div class="n-detail"><b>search_national_coverage</b> by dx+px. <b>batch_get_ncds</b> → full policy. Extract: covered indications, required documentation, exclusions.</div>
+      <div class="n-io">
+        <span class="n-io-in">IN ← {icd10_code, cpt_code}</span>
+        <span class="n-io-out">→ OUT {ncd_id, covered:bool, criteria[], doc_requirements[]}</span>
+      </div>
+    </div>
+
+    <div class="arr"><div class="arr-line"></div><div class="arr-label">+ local</div></div>
+
+    <div class="node green">
+      <div class="n-status">✓ Have — MCP built</div>
+      <div class="n-title">LCD + MAC Routing</div>
+      <div class="n-api">MCP → CMS Coverage</div>
+      <div class="n-detail"><b>get_contractors</b> → MAC by practice ZIP. <b>search_local_coverage</b> → MAC-specific LCD. May add stricter criteria than NCD.</div>
+      <div class="n-io">
+        <span class="n-io-in">IN ← {cpt_code, practice_zip}</span>
+        <span class="n-io-out">→ OUT {lcd_id, mac_id, local_criteria[], local_docs[]}</span>
+      </div>
+    </div>
+
+    <div class="arr"><div class="arr-line"></div><div class="arr-label">drug check</div></div>
+
+    <div class="node green">
+      <div class="n-status">✓ Have — MCP built</div>
+      <div class="n-title">SAD Exclusion</div>
+      <div class="n-api">MCP → CMS SAD List</div>
+      <div class="n-detail"><b>sad_exclusion_list</b> → If drug is self-administered → Part D, not Part B. Prevents wrong billing route. Critical for oncology drug administration cases.</div>
+      <div class="n-io">
+        <span class="n-io-in">IN ← hcpcs_code (if drug involved)</span>
+        <span class="n-io-out">→ OUT {excluded:bool, billing_route:"partB"|"partD"}</span>
+      </div>
+    </div>
+
+    <div class="arr"><div class="arr-line"></div><div class="arr-label">merge</div></div>
+
+    <div class="diamond-wrap">
+      <div class="diamond-shape"></div>
+      <div class="diamond-text">Covered?<br>Y / N / Gap</div>
+    </div>
+
+  </div>
+</div>
+
+<div class="v-arrow"><div class="v-arrow-line"></div><div class="v-arrow-label">coverage_result{covered, criteria_met[], gaps[]} passes to Phase 4</div></div>
+
+<!-- ═══════════════ PHASE 4: GAP ANALYSIS + LETTER ═══════════════ -->
+<div class="phase">
+  <div class="phase-label p5">
+    <div class="phase-num">Phase 4</div>
+    <div class="phase-name">Documentation + Output</div>
+    <div class="phase-desc">Generate deliverables</div>
+  </div>
+  <div class="node-track">
+
+    <div class="node blue">
+      <div class="n-status">◆ Decision logic</div>
+      <div class="n-title">Documentation Gap Check</div>
+      <div class="n-api">Agent logic</div>
+      <div class="n-detail">Compare NCD/LCD doc requirements vs clinical facts from intake. Flag each requirement: MET ✓, MISSING ✗, UNCLEAR ?. Output gap list for practice.</div>
+      <div class="n-io">
+        <span class="n-io-in">IN ← {ncd_criteria[], lcd_criteria[], clinical_notes}</span>
+        <span class="n-io-out">→ OUT {gaps[], met[], action_items[]}</span>
+      </div>
+    </div>
+
+    <div class="arr"><div class="arr-line"></div><div class="arr-label">if borderline</div></div>
+
+    <div class="node green">
+      <div class="n-status">✓ Have — MCP built</div>
+      <div class="n-title">Evidence Retrieval</div>
+      <div class="n-api">MCP → PubMed</div>
+      <div class="n-detail"><b>search_articles</b> → clinical evidence for medical necessity. <b>get_article_metadata</b> → full citations with DOIs. For appeals and borderline cases.</div>
+      <div class="n-io">
+        <span class="n-io-in">IN ← {dx_description, px_description, gap_context}</span>
+        <span class="n-io-out">→ OUT {citations[{pmid, title, doi, journal}]}</span>
+      </div>
+    </div>
+
+    <div class="arr"><div class="arr-line"></div><div class="arr-label">all inputs</div></div>
+
+    <div class="node red">
+      <div class="n-status">⬚ Need — internal build</div>
+      <div class="n-title">Medical Necessity Letter</div>
+      <div class="n-api">LLM template engine</div>
+      <div class="n-detail">Auto-draft letter citing: NCD § paragraph, LCD criteria, ICD-10 + CPT codes, clinical findings, PubMed citations. Provider reviews + signs.</div>
+      <div class="n-io">
+        <span class="n-io-in">IN ← {ncd_text, lcd_text, dx, px, citations[], gaps[]}</span>
+        <span class="n-io-out">→ OUT medical_necessity_letter.pdf (draft)</span>
+      </div>
+    </div>
+
+    <div class="arr"><div class="arr-line"></div><div class="arr-label">bundle</div></div>
+
+    <div class="node red">
+      <div class="n-status">⬚ Need — free CMS data</div>
+      <div class="n-title">NCCI Bundling Check</div>
+      <div class="n-api">CMS NCCI Edit Files (free)</div>
+      <div class="n-detail">If multi-procedure case: check code-pair conflicts. Column 1/Column 2 edits, MUEs (medically unlikely edits). Prevents bundling denial before submission.</div>
+      <div class="n-io">
+        <span class="n-io-in">IN ← cpt_codes[] (all procedures in case)</span>
+        <span class="n-io-out">→ OUT {conflicts[], allowed_combos[], modifiers_needed[]}</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="v-arrow"><div class="v-arrow-line"></div><div class="v-arrow-label">coverage_package{determination, letter, gaps, evidence} → DELIVERED TO PRACTICE</div></div>
+
+<!-- ═══════════════ PHASE 5: MONITORING ═══════════════ -->
+<div class="phase">
+  <div class="phase-label p4">
+    <div class="phase-num">Phase 5</div>
+    <div class="phase-name">Ongoing Monitoring</div>
+    <div class="phase-desc">Policy changes → alerts</div>
+  </div>
+  <div class="node-track">
+
+    <div class="node green">
+      <div class="n-status">✓ Have — MCP built</div>
+      <div class="n-title">Policy Change Alerts</div>
+      <div class="n-api">MCP → CMS What's New</div>
+      <div class="n-detail"><b>get_whats_new_report</b> → track NCD/LCD updates. Alert practice when coverage policies change for their high-volume oncology procedures.</div>
+      <div class="n-io">
+        <span class="n-io-in">IN ← practice_procedure_list[] (configured)</span>
+        <span class="n-io-out">→ OUT {changed_policies[], effective_dates[], impact}</span>
+      </div>
+    </div>
+
+    <div class="arr"><div class="arr-line"></div><div class="arr-label">feedback</div></div>
+
+    <div class="node blue">
+      <div class="n-status">◆ Phase 2 feature</div>
+      <div class="n-title">Denial Pattern Learning</div>
+      <div class="n-api">Analytics engine (future)</div>
+      <div class="n-detail">Track: which dx+px combos get denied, by which MAC, for what reason (CARC codes). Feed patterns back to coverage engine to pre-flag risk.</div>
+      <div class="n-io">
+        <span class="n-io-in">IN ← denial_outcomes[] (practice reports back)</span>
+        <span class="n-io-out">→ OUT risk_scores per dx+px+mac combo</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</div><!-- /flow-wrap -->
+
+<!-- ═══════════════ SUMMARY ═══════════════ -->
+<div class="summary-grid">
+
+  <div class="sum-card have">
+    <div class="sum-card-title">✓ Have — 8 components</div>
+    <ul class="sum-list">
+      <li>NPI Validation <span class="src">MCP → NPPES</span></li>
+      <li>ICD-10 Validation <span class="src">MCP → ICD-10</span></li>
+      <li>NCD Lookup <span class="src">MCP → CMS NCD</span></li>
+      <li>LCD + MAC Routing <span class="src">MCP → CMS LCD</span></li>
+      <li>SAD Exclusion <span class="src">MCP → CMS SAD</span></li>
+      <li>PubMed Evidence <span class="src">MCP → PubMed</span></li>
+      <li>Patient Eligibility (270/271) <span class="src">Stedi API ✓</span></li>
+    </ul>
+  </div>
+
+  <div class="sum-card need">
+    <div class="sum-card-title">⬚ Need — 4 components</div>
+    <ul class="sum-list">
+      <li>Prior Auth Required Check <span class="src">CMS list (free)</span></li>
+      <li>NCCI Bundling Edits <span class="src">CMS NCCI (free)</span></li>
+      <li>Med Necessity Letter Gen <span class="src">LLM build</span></li>
+      <li>Structured Intake Form <span class="src">Web form build</span></li>
+    </ul>
+  </div>
+
+  <div class="sum-card partial">
+    <div class="sum-card-title">⚠ Partial — 1 component</div>
+    <ul class="sum-list">
+      <li>CPT/HCPCS Resolution <span class="src">AMA license needed</span></li>
+    </ul>
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:10px;color:var(--text-muted);line-height:1.6;">
+      Works in sandbox. Production requires AMA CPT Data Files License. $100–$50K/yr depending on distribution model. This is the #1 blocker.
+    </div>
+  </div>
+
+</div>
+
+<!-- MVP BOX -->
+<div class="mvp-box">
+  <div class="mvp-col left">
+    <h3>MVP Output — What Practice Gets</h3>
+    <p>
+      For each case submitted via intake form:<br><br>
+      <span class="hl">1. Coverage Determination</span> — Covered / Not Covered / Partial, citing specific NCD § and LCD paragraph.<br>
+      <span class="hl">2. Documentation Gap List</span> — "NCD requires biopsy-confirmed staging. Not provided in intake."<br>
+      <span class="hl">3. Medical Necessity Letter Draft</span> — Pre-filled with NCD/LCD citations + PubMed evidence. Provider reviews & signs.<br>
+      <span class="hl">4. Bundling Warnings</span> — "CPT 77385 + 77014 have NCCI conflict. Use modifier -59."<br>
+      <span class="hl">5. PA Requirement Flag</span> — Whether this procedure even needs prior auth.
+    </p>
+  </div>
+  <div class="mvp-col right">
+    <h3>Deferred to Phase 2</h3>
+    <p>
+      <span class="hl">EHR Integration</span> — Auto-pull clinical data via FHIR. Not needed for FFS rule-based determination.<br><br>
+      <span class="hl">Electronic Submission (278)</span> — Actually submit PA to MAC. MVP is advisory; practice submits manually.<br><br>
+      <span class="hl">Denial Parsing + Appeals</span> — Parse 835/CARC codes, manage multi-level appeal workflow. Highest value but needs denial data flowing back first.<br><br>
+      <span class="hl">Cost Estimation + ABN</span> — Fee schedule lookup + ABN form generation. Free CMS data, 1–2 week build.<br><br>
+      <span class="hl">Modifier Assignment</span> — Rules engine from MPFSDB. Free CMS data, 2–3 week build.
+    </p>
+  </div>
+</div>
+
+</div><!-- /page -->
+</body>
+</html>
