@@ -1,0 +1,398 @@
+# Claude Code Prompt: Denali.health Medicare Prior Authorization Assistant — PWA MVP
+
+## 1. THE PROBLEM
+
+Radiation oncology practices waste 15–30 hours per week per practice on Medicare prior authorization paperwork. An authorization coordinator manually:
+
+1. Looks up whether the patient has active Original Medicare (Fee-for-Service) coverage
+2. Checks if the planned procedure (radiation therapy, diagnostic imaging) requires prior authorization
+3. Reads the relevant National Coverage Determination (NCD) and Local Coverage Determination (LCD) to figure out what documentation Medicare requires
+4. Cross-references NCCI bundling rules to avoid code-pair conflicts that cause automatic denials
+5. Writes a medical necessity letter citing the correct NCD/LCD paragraphs, ICD-10 diagnosis, CPT procedure, and supporting literature
+6. Submits the package to the MAC (Medicare Administrative Contractor) and waits
+
+Each step involves a different CMS data source, a different website, and a different format. There is no single tool that connects these steps for Original Medicare FFS.
+
+**This PWA automates steps 1–5 into a single guided workflow.** The coordinator enters the case details once, and the system returns: a coverage determination, documentation gap list, bundling warnings, PA requirement flag, and a draft medical necessity letter — all with specific NCD/LCD citations.
+
+---
+
+## 2. WHY THIS IS A REAL PROBLEM (Attribution)
+
+- **AMA 2024 Prior Authorization Survey**: 94% of physicians report care delays due to prior authorization. Average practice spends 14 hours/week on PA. 1 in 3 physicians report a PA-related serious adverse event. Source: https://www.ama-assn.org/system/files/prior-authorization-survey.pdf
+
+- **MGMA 2023 Annual Data Report**: Revenue cycle staffing costs increased 11% year-over-year, with prior auth cited as the primary driver of administrative labor in specialty practices. Source: https://www.mgma.com/data
+
+- **KFF 2024**: In 2024, approximately 628,243 prior authorization reviews were submitted for Traditional Medicare beneficiaries — roughly 2 per 100 enrollees. Medicare Advantage is far higher at 99% of plans requiring PA. Source: https://www.kff.org/medicare/
+
+- **CMS-0057-F Final Rule (Jan 2024)**: CMS finalized requirements for payers to implement FHIR-based Prior Authorization APIs by January 2027. This is creating urgency for tooling on both payer and provider sides. Source: https://www.federalregister.gov/documents/2024/02/08/2024-02758
+
+- **WISeR Model (CMS, effective Jan 2026)**: CMS launched a mandatory prior authorization pilot in 6 states (NJ, OH, OK, TX, AZ, WA) for 17 Medicare FFS services. This is the first expansion of PA into traditional Medicare at this scale. Source: https://www.federalregister.gov/documents/2025/07/01/2025-12195
+
+---
+
+## 3. WHY THIS SPECIFIC USE CASE — ORIGINAL MEDICARE FFS + ONCOLOGY (Attribution)
+
+### Why Medicare FFS (not Medicare Advantage)?
+
+Medicare FFS coverage is **rule-based and deterministic**. Coverage is determined by NCDs, LCDs, and NCCI edits — all published, free, machine-readable data from CMS. This means a software system can make a coverage determination with high confidence.
+
+Medicare Advantage, by contrast, requires payer-specific criteria (each MA plan has its own PA rules, forms, and timelines). There are 900+ MA plans. Building for MA requires per-plan integrations. FFS is one payer: CMS.
+
+Source: CMS NCD/LCD databases are publicly available at https://www.cms.gov/medicare-coverage-database and the NCCI edit files at https://www.cms.gov/medicare/coding-billing/national-correct-coding-initiative-ncci-edits
+
+### Why Oncology (Radiation Therapy + Diagnostic Imaging)?
+
+- **60% of new cancer diagnoses** occur in adults aged 65+, making Medicare the dominant payer for radiation oncology. Source: NCI SEER Cancer Statistics, https://seer.cancer.gov/statfacts/
+- **Radiation oncology billing is the most complex** specialty billing in Medicare, involving treatment planning codes, treatment delivery codes, image guidance codes, and physics QA codes billed across multiple sessions. Source: ASTRO/ACCC coding guidance, CMS MPFS Final Rules
+- **CMS expanded mandatory PA** to certain radiation therapy and imaging services starting 2020 (CMS-1716-F hospital outpatient) and is expanding in 2026 via WISeR.
+- Radiation oncology practices are typically small (1–5 physicians) with limited administrative staff — they are disproportionately impacted by PA burden vs. large health systems.
+
+Source: MedisysData practical guide (July 2025), https://www.medisysdata.com/blog/medicare-radiation-oncology-billing-a-practical-guide/ — confirms that "While Original Medicare typically does not require prior authorization for most radiation oncology services, this is often not the case with Medicare Advantage plans" and that CMS is actively moving toward more PA in FFS.
+
+---
+
+## 4. ASSUMPTIONS
+
+### Business Assumptions
+
+- **Target user**: Authorization coordinator at a radiation oncology or diagnostic imaging practice. Not the physician. The coordinator already knows the patient's Medicare ID, diagnosis, and planned procedure.
+- **MVP scope**: Decision support and documentation generation only. This tool does NOT submit anything to CMS or MACs electronically. The coordinator reviews the output and submits manually (fax, mail, or MAC portal).
+- **No EHR integration for MVP**: The coordinator enters case data via a structured web form. Clinical data (staging, biopsy results, prior treatments) are entered as free-text fields. EHR/FHIR auto-pull is Phase 2.
+- **CPT codes in MVP are limited**: We do NOT have an AMA production CPT license yet. The app can accept CPT codes as input but cannot display full CPT descriptions. Use HCPCS codes (which are free/public) where applicable. Clearly label this limitation in the UI.
+
+### Technical Assumptions
+
+- **PWA hosted on Vercel** for demo and production. Static frontend + serverless API routes (`/api/*`) for keyed services. Vercel Environment Variables store all secrets server-side.
+- **Stedi API** for patient eligibility (270/271). Test API key available. Production key available on demand. Stedi Payer ID for Medicare/CMS is "CMS". API docs: https://www.stedi.com/docs/healthcare/api-reference/post-healthcare-eligibility
+- **CMS data is free and public** — NCDs, LCDs, NCCI edit files, PA required list, ICD-10 codes, NPI registry. These are accessed via MCP connectors that are already built (see "What Is Already Built" below).
+- **LLM for letter generation**: Use Anthropic Claude API (claude-sonnet-4-20250514) for drafting the medical necessity letter from structured inputs. The letter is a DRAFT — always requires provider review and signature before submission.
+- **No PHI storage**: The PWA does not persist patient data. All case data is session-only (in-memory). No database. No server-side storage.
+- **HIPAA note**: Because this tool is for the provider's own use within their practice (like a calculator), and does not transmit PHI to external parties beyond the eligibility check (which goes through Stedi's HIPAA-compliant pipeline), the MVP operates under the provider's existing HIPAA compliance framework. This is similar to how practices use CMS's own online tools today.
+
+---
+
+## 5. WHAT IS INCLUDED (MVP Scope)
+
+### 5.1 Structured Intake Form (Build: Internal)
+
+A multi-step web form where the coordinator enters:
+
+**Step 1 — Patient**
+- Medicare Beneficiary Identifier (MBI) — 11 characters, format: `1AN-A9AN-AA99` where A=alpha, N=numeric, AN=either
+- Patient date of birth
+- Patient first name, last name
+
+**Step 2 — Provider**
+- Ordering provider NPI (10 digits)
+- Practice ZIP code (for MAC routing)
+
+**Step 3 — Clinical**
+- ICD-10 diagnosis code (e.g., C34.90 — Malignant neoplasm of lung)
+- CPT/HCPCS procedure code (e.g., 77385 — IMRT delivery)
+- Place of service (freestanding clinic vs. hospital outpatient — affects billing rules)
+- Clinical summary (free text — staging, pathology, prior treatments, clinical rationale)
+
+The form should validate MBI format, NPI check digit (Luhn algorithm with 80840 prefix), and ICD-10 format before submission.
+
+### 5.2 Patient Eligibility Check (Source: Stedi API → CMS HETS)
+
+After intake, call Stedi's Real-Time Eligibility Check (270/271) JSON endpoint.
+
+**Endpoint**: `POST https://healthcare.us.stedi.com/2024-04-01/change/medicalnetwork/eligibility/v3`
+
+**Key request fields**:
+```json
+{
+  "controlNumber": "123456789",
+  "tradingPartnerServiceId": "CMS",
+  "provider": {
+    "organizationName": "Practice Name",
+    "npi": "1234567890"
+  },
+  "subscriber": {
+    "memberId": "1EG4TE5MK73",
+    "firstName": "JANE",
+    "lastName": "DOE",
+    "dateOfBirth": "19600101"
+  },
+  "encounter": {
+    "serviceTypeCodes": ["30"]
+  }
+}
+```
+
+**Required header for CMS**: `X-Forwarded-For` with originating IP (CMS traceability requirement effective Nov 2025).
+
+**What to extract from 271 response**:
+- `planStatus` → Active or Inactive
+- `insuranceTypeCode` → MA (Part A), MB (Part B), or MA plan code
+- If patient is on a Medicare Advantage plan → STOP. Display: "This patient is enrolled in Medicare Advantage plan [name]. This tool is designed for Original Medicare FFS only."
+- If patient has secondary insurance → note for letter (e.g., Medigap, Medicaid dual-eligible)
+- Part A and Part B effective dates
+
+**Test mode**: Stedi provides mock requests for CMS. Use test API key (in `.env`). Mock subscriber data per Stedi docs: https://www.stedi.com/docs/api-reference/healthcare/mock-requests-eligibility-checks
+
+**API key handling**: Stored in Vercel Environment Variables (dashboard → Settings → Environment Variables). For local development, use `.env.local`:
+
+```
+STEDI_API_KEY=test_your_key_here
+ANTHROPIC_API_KEY=sk-ant-your_key_here
+```
+
+These are accessed ONLY in `/api/*.js` serverless functions via `process.env.STEDI_API_KEY`. They are never bundled into the frontend JavaScript.
+
+### 5.3 NPI Verification (Source: CMS NPPES API — Already Built)
+
+Validate the ordering provider's NPI against the NPPES registry.
+- Confirm NPI is active
+- Pull provider name, specialty taxonomy, practice address
+- Used in the medical necessity letter header
+
+This is already built as an MCP connector. For the PWA, call the public NPPES API directly:
+`GET https://npiregistry.cms.hhs.gov/api/?number={NPI}&version=2.1`
+
+### 5.4 ICD-10 Validation and Description (Source: CMS ICD-10 — Already Built)
+
+Validate the entered ICD-10 code exists and is valid for HIPAA transactions.
+- Pull full description (e.g., C34.90 → "Malignant neoplasm of unspecified part of unspecified bronchus or lung")
+- Used in coverage determination and letter generation
+
+For the PWA, use a bundled JSON lookup table of ICD-10 codes (downloadable from CMS) or call the existing MCP connector.
+
+### 5.5 Prior Authorization Required Check (Source: CMS Published Lists — Build: Internal)
+
+Check if the entered CPT/HCPCS code appears on any of these CMS-published PA required lists:
+
+1. **Hospital OPD PA Required List** (CMS-1716-F, effective 2020): Certain procedures in hospital outpatient settings. Available at https://www.cms.gov/research-statistics-data-and-systems/monitoring-programs/medicare-ffs-compliance-programs/prior-authorization-initiatives
+2. **ASC PA Demonstration** (effective Dec 2025, 10 states): https://www.cms.gov/research-statistics-data-and-systems/monitoring-programs/medicare-ffs-compliance-programs/prior-authorization-initiatives  
+3. **WISeR Model** (effective Jan 2026, 6 states): 17 selected services. Source: Federal Register 2025-12195
+4. **DMEPOS PA Required List**: For durable medical equipment. Available at http://go.cms.gov/DMEPOSPA
+
+For MVP: Store these as a static JSON lookup table. Update quarterly or when CMS publishes changes. The table should include: HCPCS code, description, which list it appears on, effective date, and which states (if state-specific).
+
+**Output**: "PA REQUIRED — This procedure appears on [list name]. Authorization must be obtained before service." or "PA NOT REQUIRED for this procedure under Original Medicare FFS in [state]."
+
+### 5.6 NCD Lookup (Source: CMS Coverage Database — Already Built)
+
+Query National Coverage Determinations by condition/procedure.
+- Pull the specific NCD number, title, coverage criteria text, and indications/limitations
+- Identify the specific paragraphs that define medical necessity criteria for the entered diagnosis + procedure combination
+
+Already built as an MCP connector (CMS Coverage tools). For the PWA, proxy through the existing MCP or call CMS Coverage API directly.
+
+### 5.7 LCD + MAC Routing (Source: CMS Coverage Database — Already Built)
+
+Based on the practice ZIP code, determine which MAC has jurisdiction, then pull the applicable LCD.
+- MACs are regional contractors (e.g., Noridian, CGS, Palmetto)
+- LCDs add MAC-specific coverage criteria on top of NCDs
+- Pull LCD number, title, and coverage indications/limitations text
+
+Already built as MCP connectors.
+
+### 5.8 SAD Exclusion Check (Source: CMS SAD List — Already Built)
+
+Check if the procedure code appears on the Self-Administered Drug exclusion list.
+- If on the list: drug is excluded from Part B, must go through Part D
+- Relevant for oncology infusion drugs
+
+Already built as MCP connector.
+
+### 5.9 NCCI Bundling Edit Check (Source: CMS NCCI Edit Files — Build: Parse + Load)
+
+Check if the entered CPT/HCPCS code has NCCI Procedure-to-Procedure (PTP) conflicts with any commonly co-billed codes in radiation oncology.
+
+**Data source**: CMS publishes quarterly NCCI PTP edit files as downloadable ZIP/CSV at:
+https://www.cms.gov/medicare/coding-billing/national-correct-coding-initiative-ncci-edits/medicare-ncci-procedure-procedure-ptp-edits
+
+Three file types:
+1. **PTP Edits (Practitioner)**: Code pair conflicts for physician/practitioner claims
+2. **PTP Edits (Hospital Outpatient)**: Code pair conflicts for hospital claims
+3. **MUE (Medically Unlikely Edits)**: Maximum units per CPT per day per beneficiary
+
+For MVP: Download the latest quarterly PTP edit files. Parse into a searchable JSON structure. Given an input CPT code, return all code pairs that conflict with it, along with the modifier indicator (0 = never bill together, 1 = modifier allowed to override).
+
+**Output**: "WARNING: CPT 77385 (IMRT) + CPT 77014 (CT guidance) have NCCI PTP edit conflict. Modifier indicator = 1. Use modifier -59 (distinct procedural service) if services are truly separate." or "No NCCI conflicts found for this code combination."
+
+For MVP, pre-filter to radiation oncology and diagnostic imaging code ranges to keep the dataset manageable.
+
+### 5.10 Medical Necessity Letter Generation (Source: Assembly of above outputs — Build: LLM Template)
+
+Assemble a draft medical necessity letter using all the structured data collected above. Call Anthropic Claude API to draft the letter.
+
+**Inputs to the LLM prompt**:
+- Patient demographics (from intake)
+- Provider info (from NPI lookup)
+- ICD-10 code + description
+- CPT/HCPCS code (description if available)
+- NCD citation (specific section and paragraph text)
+- LCD citation (specific section and paragraph text)
+- Clinical summary (from intake free text)
+- PubMed references (if relevant — PubMed MCP already built)
+
+**Letter structure** (CMS-recognized format):
+1. Header: Provider name, NPI, practice address, date
+2. RE: Patient name, MBI, date of birth
+3. Procedure requested with CPT/HCPCS code
+4. Diagnosis with ICD-10 code
+5. Medical necessity narrative (citing NCD § and LCD paragraph)
+6. Supporting clinical evidence (staging, pathology, prior treatments)
+7. Literature citations (PubMed)
+8. Conclusion requesting approval
+9. Provider signature line (DRAFT — requires manual review and signature)
+
+**LLM call**: Use `claude-sonnet-4-20250514` via Anthropic API. System prompt should instruct the model to cite specific NCD/LCD sections, use formal medical terminology, and clearly mark the output as a draft requiring provider review.
+
+**Output**: Rendered letter (viewable in browser + downloadable as PDF or copy-to-clipboard).
+
+### 5.11 Coverage Determination Dashboard
+
+After all checks complete, display a single-screen dashboard showing:
+
+1. **Eligibility**: ✅ Active Part A+B FFS | ❌ Not eligible | ⚠️ Medicare Advantage (stop)
+2. **PA Required**: ✅ Not required | ❌ Required (list name, state if applicable)
+3. **Coverage Determination**: ✅ Covered per NCD [number] | ⚠️ Covered with conditions | ❌ Not covered
+4. **NCCI Bundling**: ✅ No conflicts | ⚠️ Conflicts found (with modifier guidance)
+5. **SAD Exclusion**: ✅ Not excluded | ❌ Excluded from Part B
+6. **Documentation Gaps**: List of missing items per NCD/LCD requirements vs. what was provided
+7. **Medical Necessity Letter**: Draft letter with download/copy option
+
+---
+
+## 6. WHAT IS NOT INCLUDED (Deferred to Phase 2+)
+
+Do NOT build any of the following in the MVP:
+
+- **Electronic PA submission (278 transaction)** — Would require Availity or similar clearinghouse with 278 support. Deferred.
+- **EHR/FHIR integration** — No auto-pull of clinical data from Epic, Cerner, etc. Manual intake only.
+- **Denial parsing (835/CARC codes)** — No reading of remittance advice or denial reasons. Deferred.
+- **Appeals workflow** — No appeal letter generation or tracking.
+- **Cost estimation / ABN generation** — No Medicare fee schedule lookups or Advance Beneficiary Notices.
+- **Modifier assignment logic** — NCCI shows conflicts but doesn't auto-assign modifiers.
+- **Provider credentialing chain validation** — No checking if the ordering provider is enrolled with the specific MAC.
+- **Audit trail / compliance logging** — No persistent records for MVP.
+- **Multi-user / role-based access** — Single user, no auth for MVP demo.
+- **Medicare Advantage support** — FFS only. MA requires per-plan logic.
+- **Database / persistent storage** — All session-only. No backend database.
+
+---
+
+## 7. TECH STACK
+
+- **Framework**: React (Vite) — single-page PWA
+- **Styling**: Tailwind CSS
+- **Hosting**: Vercel (static frontend + serverless API routes)
+- **API routes (serverless)**: `/api/eligibility` (proxies Stedi), `/api/generate-letter` (proxies Anthropic). Keys stored in Vercel Environment Variables — never exposed to the browser.
+- **Client-side API calls**: Direct `fetch()` for public APIs (NPPES, CMS). Calls to `/api/*` routes for keyed services.
+- **State management**: React `useState`/`useReducer` — no Redux needed for MVP
+- **PWA manifest**: Include `manifest.json` and service worker for installability
+- **Environment variables**: Stored in Vercel Environment Variables (Settings → Environment Variables). For local dev, use `.env.local` file (auto-gitignored by Vercel/Next.js convention). Keys prefixed with `STEDI_` and `ANTHROPIC_` (no `NEXT_PUBLIC_` prefix — these must NOT be exposed to the browser).
+- **Static data files**: 
+  - `pa-required-codes.json` — CMS PA required procedure lists
+  - `ncci-ptp-onc.json` — NCCI PTP edits filtered to oncology/imaging code ranges
+  - `ncci-mue-onc.json` — NCCI MUE edits for oncology/imaging codes
+  
+### File Structure
+```
+denali-prior-auth/
+├── api/                              # Vercel Serverless Functions
+│   ├── eligibility.js                # POST — proxies Stedi 270/271
+│   └── generate-letter.js            # POST — proxies Anthropic Claude
+├── public/
+│   ├── manifest.json
+│   ├── favicon.ico
+│   └── data/
+│       ├── pa-required-codes.json
+│       ├── ncci-ptp-onc.json
+│       └── ncci-mue-onc.json
+├── src/
+│   ├── App.jsx
+│   ├── main.jsx
+│   ├── components/
+│   │   ├── IntakeForm/
+│   │   │   ├── PatientStep.jsx
+│   │   │   ├── ProviderStep.jsx
+│   │   │   └── ClinicalStep.jsx
+│   │   ├── EligibilityCheck.jsx
+│   │   ├── CoverageDetermination.jsx
+│   │   ├── NCCIBundlingCheck.jsx
+│   │   ├── PARequiredCheck.jsx
+│   │   ├── MedNecessityLetter.jsx
+│   │   └── Dashboard.jsx
+│   ├── services/
+│   │   ├── eligibilityApi.js        # Calls /api/eligibility
+│   │   ├── letterApi.js             # Calls /api/generate-letter
+│   │   ├── nppes.js                 # Direct call — public API, no key
+│   │   ├── cmsCoverage.js           # Direct call — public API, no key
+│   │   ├── ncciEdits.js             # Local JSON lookup
+│   │   ├── paRequired.js            # Local JSON lookup
+│   │   ├── icd10.js                 # Local JSON lookup or public API
+│   │   └── sadExclusion.js          # Direct call — public API, no key
+│   ├── utils/
+│   │   ├── mbiValidator.js          # MBI format validation
+│   │   ├── npiValidator.js          # NPI Luhn check
+│   │   └── formatters.js            # Display formatting helpers
+│   └── styles/
+│       └── globals.css
+├── .env.local                        # Local dev keys (auto-gitignored)
+├── .gitignore                        # Must include .env*
+├── vercel.json                       # Vercel config (rewrites if needed)
+├── vite.config.js
+├── package.json
+├── tailwind.config.js
+└── README.md
+```
+
+### API Route Details
+
+**`/api/eligibility.js`** (Vercel Serverless Function):
+```javascript
+// Receives: { mbi, firstName, lastName, dob, providerNpi, providerName }
+// Adds STEDI_API_KEY from process.env
+// Calls: POST https://healthcare.us.stedi.com/2024-04-01/change/medicalnetwork/eligibility/v3
+// Returns: parsed 271 response to client
+```
+
+**`/api/generate-letter.js`** (Vercel Serverless Function):
+```javascript
+// Receives: { patientInfo, providerInfo, icd10, cpt, ncdText, lcdText, clinicalSummary, pubmedCitations }
+// Adds ANTHROPIC_API_KEY from process.env
+// Calls: POST https://api.anthropic.com/v1/messages (claude-sonnet-4-20250514)
+// Returns: generated letter text to client
+```
+
+### Security Requirements
+- `.env.local` and `.env*` MUST be in `.gitignore` — enforce this in the initial commit
+- API keys must never appear in source code, commit history, or build output
+- **Stedi and Anthropic keys**: Stored in Vercel Environment Variables (Settings → Environment Variables). Accessed only in `/api/*` serverless functions via `process.env`. Never prefixed with `VITE_` or `NEXT_PUBLIC_` — these prefixes would expose them to the browser bundle.
+- **Public APIs** (NPPES, CMS Coverage, CMS NCCI data files): Called directly from the client. No keys needed.
+- No PHI stored anywhere — all data is in-memory only, cleared on page refresh
+
+---
+
+## 8. STEP-BY-STEP BUILD ORDER
+
+Build in this order. Each step should be independently testable.
+
+1. **Project scaffolding**: Vite + React + Tailwind + PWA manifest + `.gitignore` with `.env*` + `vercel.json` + `/api` directory for serverless functions
+2. **Intake form**: 3-step form with MBI validation, NPI Luhn check, ICD-10 format check
+3. **API routes**: `/api/eligibility.js` and `/api/generate-letter.js` serverless functions with key injection from `process.env`
+4. **NPI verification**: Call NPPES API (public, client-side), display provider name/specialty
+5. **Eligibility check**: Client calls `/api/eligibility` → proxies to Stedi test API with mock CMS data → parse 271 response → show FFS vs MA gate
+6. **PA Required check**: Load static JSON, lookup by HCPCS, display result
+7. **NCD/LCD lookup**: Call CMS Coverage API (public), display coverage criteria for the entered diagnosis/procedure
+8. **NCCI bundling check**: Load static JSON (pre-filtered PTP edits), check for conflicts
+9. **SAD exclusion check**: Call CMS Coverage API or load static data
+10. **Dashboard assembly**: Single screen showing all results with color-coded status indicators
+11. **Medical necessity letter**: Client calls `/api/generate-letter` → proxies to Anthropic API → render letter with download option
+12. **Vercel deployment**: Connect GitHub repo to Vercel, set Environment Variables (STEDI_API_KEY, ANTHROPIC_API_KEY), deploy via `git push`
+
+---
+
+## 9. IMPORTANT NOTES
+
+- **Every CMS data source cited in this prompt is free and publicly available.** No paid data licenses needed except AMA CPT (which is deferred — the app accepts CPT codes as input but may not display descriptions).
+- **The Stedi eligibility check is the only paid external API.** First 100 checks/month free, $0.15 each after. MBI lookup: first 10/month free, $0.50 each after. Pricing: https://www.stedi.com/pricing
+- **API keys are never exposed to the browser.** Stedi and Anthropic calls go through Vercel serverless functions (`/api/*`). Keys are stored in Vercel Environment Variables and accessed via `process.env` server-side only.
+- **This is a decision-support tool, not an autonomous agent.** The coordinator reviews and submits everything manually. The tool does not make treatment decisions or submit anything to CMS.
+- **All coverage determinations include specific NCD/LCD citations.** The tool never says "covered" or "not covered" without pointing to the exact policy section. This is critical for the tool's value and for regulatory defensibility.
