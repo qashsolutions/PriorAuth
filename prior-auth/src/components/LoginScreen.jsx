@@ -1,106 +1,376 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 import { validateNPI } from '../utils/npiValidator';
 import { lookupNPI } from '../services/nppes';
+import { logAction } from '../services/auditLog';
 import Spinner from './ui/Spinner';
 
 const DEMO_PROVIDER = {
   npi: '0000000000',
   name: 'Dr. Demo Admin',
   credential: 'MD',
+  role: 'admin',
   specialty: 'Radiation Oncology',
   address: '100 Demo Way, Austin, TX 78701',
+  practiceId: null,
   isDemo: true,
 };
 
-export default function LoginScreen({ onLogin }) {
-  const [npi, setNpi] = useState('');
-  const [error, setError] = useState(null);
+// ─── Sign In Tab ────────────────────────────────────────────────
+
+function SignInForm({ onDemoMode, setGlobalError }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [providerPreview, setProviderPreview] = useState(null);
+  const [error, setError] = useState(null);
 
-  const handleNpiChange = useCallback((e) => {
-    const value = e.target.value.replace(/\D/g, '');
-    setNpi(value);
-    setError(null);
-    setProviderPreview(null);
-  }, []);
-
-  const handleSignIn = useCallback(async () => {
-    if (!npi || npi.length < 10) {
-      setError('Please enter a 10-digit NPI');
-      return;
-    }
-
-    const validation = validateNPI(npi);
-    if (!validation.valid) {
-      setError(validation.error);
+  const handleSubmit = useCallback(async (e) => {
+    e.preventDefault();
+    if (!email || !password) {
+      setError('Email and password are required');
       return;
     }
 
     setLoading(true);
     setError(null);
 
-    try {
-      const info = await lookupNPI(npi);
+    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
-      if (!info.found) {
-        setError('NPI not found in the NPPES registry. Please check and try again.');
-        setLoading(false);
-        return;
-      }
-
-      if (!info.active) {
-        setError('This NPI is registered but not currently active.');
-        setLoading(false);
-        return;
-      }
-
-      onLogin({
-        npi,
-        name: info.name,
-        credential: info.credential,
-        specialty: info.specialty,
-        address: info.address,
-        isDemo: false,
-      });
-    } catch {
-      setError('Could not reach the NPPES registry. Please try again.');
-    } finally {
+    if (authError) {
+      setError(authError.message === 'Invalid login credentials'
+        ? 'Invalid email or password. Check your credentials or sign up first.'
+        : authError.message);
       setLoading(false);
+      return;
     }
-  }, [npi, onLogin]);
 
-  const handleDemoMode = useCallback(() => {
-    onLogin(DEMO_PROVIDER);
-  }, [onLogin]);
+    // Auth state change listener in App.jsx handles the rest
+    setLoading(false);
+  }, [email, password]);
 
-  const handleKeyDown = useCallback(
-    (e) => {
-      if (e.key === 'Enter' && !loading) handleSignIn();
-    },
-    [handleSignIn, loading]
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => { setEmail(e.target.value); setError(null); }}
+          placeholder="provider@practice.com"
+          autoFocus
+          disabled={loading}
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-denali-500 focus:border-denali-500 disabled:opacity-50"
+        />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => { setPassword(e.target.value); setError(null); }}
+          placeholder="••••••••"
+          disabled={loading}
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-denali-500 focus:border-denali-500 disabled:opacity-50"
+        />
+      </div>
+
+      {error && <p className="text-xs text-red-600">{error}</p>}
+
+      <button
+        type="submit"
+        disabled={loading || !email || !password}
+        className="w-full px-4 py-3 bg-denali-600 text-white rounded-lg font-medium text-sm hover:bg-denali-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {loading ? (
+          <span className="flex items-center justify-center gap-2">
+            <Spinner size="sm" label="" /> Signing in...
+          </span>
+        ) : 'Sign In'}
+      </button>
+
+      <div className="pt-3 border-t border-gray-100 text-center">
+        <button type="button" onClick={onDemoMode}
+          className="text-xs text-gray-400 hover:text-denali-600 transition-colors">
+          Enter Demo Mode (no account required)
+        </button>
+      </div>
+    </form>
   );
+}
 
-  // Preview provider on blur (if valid)
-  const handleBlur = useCallback(async () => {
-    if (!npi || npi.length < 10) return;
+// ─── Provider Sign Up Tab ───────────────────────────────────────
+
+function ProviderSignUpForm({ inviteToken }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [npi, setNpi] = useState('');
+  const [npiInfo, setNpiInfo] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [npiLoading, setNpiLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(false);
+
+  // If there's an invite token, load the invitation details
+  const [invitation, setInvitation] = useState(null);
+  useEffect(() => {
+    if (!inviteToken || !supabase) return;
+    supabase.from('invitations').select('*').eq('token', inviteToken).single()
+      .then(({ data }) => {
+        if (data && !data.accepted_at) {
+          setInvitation(data);
+          setEmail(data.email);
+        }
+      });
+  }, [inviteToken]);
+
+  const handleNpiBlur = useCallback(async () => {
+    if (!npi || npi.length < 10 || invitation) return; // Staff don't need NPI
     const validation = validateNPI(npi);
-    if (!validation.valid) return;
+    if (!validation.valid) {
+      setError(validation.error);
+      setNpiInfo(null);
+      return;
+    }
 
+    setNpiLoading(true);
     try {
       const info = await lookupNPI(npi);
-      if (info.found && info.active) {
-        setProviderPreview(info);
-      }
+      if (!info.found) { setError('NPI not found in NPPES registry'); setNpiInfo(null); }
+      else if (!info.active) { setError('This NPI is registered but not active'); setNpiInfo(null); }
+      else { setNpiInfo(info); setError(null); }
     } catch {
-      // Non-critical — don't block sign-in
+      setError('Could not reach NPPES. Try again.');
+    } finally {
+      setNpiLoading(false);
     }
-  }, [npi]);
+  }, [npi, invitation]);
+
+  const handleSubmit = useCallback(async (e) => {
+    e.preventDefault();
+    if (!email || !password) { setError('Email and password are required'); return; }
+    if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
+
+    // Provider signup requires NPI; staff signup (via invite) does not
+    if (!invitation) {
+      if (!npi) { setError('NPI is required for provider signup'); return; }
+      const v = validateNPI(npi);
+      if (!v.valid) { setError(v.error); return; }
+      if (!npiInfo) { setError('Please verify your NPI first (click out of the NPI field)'); return; }
+    }
+
+    setLoading(true);
+    setError(null);
+
+    // 1. Create auth user
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+
+    if (authError) {
+      setError(authError.message);
+      setLoading(false);
+      return;
+    }
+
+    const userId = authData.user?.id;
+    if (!userId) {
+      setSuccess(true); // Email confirmation required
+      setLoading(false);
+      return;
+    }
+
+    try {
+      if (invitation) {
+        // Staff signup: link to existing practice
+        await supabase.from('profiles').insert({
+          id: userId,
+          practice_id: invitation.practice_id,
+          full_name: email.split('@')[0], // Placeholder — can update later
+          role: invitation.role,
+        });
+
+        // Mark invitation as accepted
+        await supabase.from('invitations')
+          .update({ accepted_at: new Date().toISOString() })
+          .eq('id', invitation.id);
+
+        await logAction('invitation_accepted', {
+          invitation_id: invitation.id,
+          role: invitation.role,
+        }, { userId, practiceId: invitation.practice_id });
+      } else {
+        // Provider signup: create practice + profile
+        const { data: practice } = await supabase.from('practices').insert({
+          npi,
+          name: npiInfo.name,
+          specialty: npiInfo.specialty,
+          address: npiInfo.address,
+        }).select().single();
+
+        await supabase.from('profiles').insert({
+          id: userId,
+          practice_id: practice.id,
+          full_name: npiInfo.name,
+          role: 'provider',
+        });
+
+        await logAction('login', { method: 'signup', npi }, { userId, practiceId: practice.id });
+      }
+    } catch (err) {
+      setError('Account created but profile setup failed. Please contact support.');
+      setLoading(false);
+      return;
+    }
+
+    setSuccess(true);
+    setLoading(false);
+  }, [email, password, npi, npiInfo, invitation]);
+
+  if (success) {
+    return (
+      <div className="text-center py-6">
+        <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-bold text-gray-900 mb-2">Account Created</h3>
+        <p className="text-sm text-gray-500">
+          Check your email to confirm your account, then sign in.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {invitation && (
+        <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+          You&apos;ve been invited to join a practice as <strong>{invitation.role.toUpperCase()}</strong>.
+        </div>
+      )}
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => { setEmail(e.target.value); setError(null); }}
+          placeholder="you@practice.com"
+          autoFocus={!invitation}
+          disabled={loading || !!invitation}
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-denali-500 focus:border-denali-500 disabled:opacity-50"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => { setPassword(e.target.value); setError(null); }}
+          placeholder="Minimum 6 characters"
+          autoFocus={!!invitation}
+          disabled={loading}
+          className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-denali-500 focus:border-denali-500 disabled:opacity-50"
+        />
+      </div>
+
+      {/* NPI field — only for provider signup (not staff via invite) */}
+      {!invitation && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Provider NPI <span className="text-gray-400 font-normal">(10 digits)</span>
+          </label>
+          <input
+            type="text"
+            value={npi}
+            onChange={(e) => { setNpi(e.target.value.replace(/\D/g, '')); setError(null); setNpiInfo(null); }}
+            onBlur={handleNpiBlur}
+            placeholder="1234567890"
+            maxLength={10}
+            disabled={loading}
+            className={`w-full px-4 py-3 border rounded-lg font-mono text-sm tracking-wider ${
+              error && !npiInfo ? 'border-red-400 bg-red-50' : 'border-gray-300'
+            } focus:ring-2 focus:ring-denali-500 focus:border-denali-500 disabled:opacity-50`}
+          />
+          {npiLoading && <p className="mt-1 text-xs text-gray-400">Verifying NPI...</p>}
+
+          {npiInfo && (
+            <div className="mt-2 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm">
+              <p className="font-medium text-emerald-800">
+                {npiInfo.name}
+                {npiInfo.credential && <span className="text-emerald-600">, {npiInfo.credential}</span>}
+              </p>
+              <p className="text-emerald-600 text-xs">{npiInfo.specialty}</p>
+              {npiInfo.address && <p className="text-emerald-600 text-xs mt-1">{npiInfo.address}</p>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {error && <p className="text-xs text-red-600">{error}</p>}
+
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full px-4 py-3 bg-denali-600 text-white rounded-lg font-medium text-sm hover:bg-denali-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {loading ? (
+          <span className="flex items-center justify-center gap-2">
+            <Spinner size="sm" label="" /> Creating account...
+          </span>
+        ) : invitation ? 'Join Practice' : 'Create Account'}
+      </button>
+    </form>
+  );
+}
+
+// ─── Main Login Screen ──────────────────────────────────────────
+
+export default function LoginScreen({ onDemoLogin }) {
+  const [tab, setTab] = useState('signin'); // signin | signup
+
+  // Check for invite token in URL
+  const inviteToken = new URLSearchParams(window.location.search).get('invite');
+
+  // If there's an invite token, default to signup tab
+  useEffect(() => {
+    if (inviteToken) setTab('signup');
+  }, [inviteToken]);
+
+  // If Supabase is not configured, fall back to demo-only mode
+  if (!supabase) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <h1 className="text-2xl font-bold text-gray-900">
+              <span className="text-denali-600">Denali</span>.health
+            </h1>
+            <p className="text-sm text-gray-400 font-mono mt-1">Medicare PA Assistant — Radiation Oncology</p>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8 text-center">
+            <p className="text-sm text-gray-500 mb-4">
+              Supabase is not configured. Running in demo mode only.
+            </p>
+            <button
+              onClick={() => onDemoLogin(DEMO_PROVIDER)}
+              className="px-6 py-3 bg-denali-600 text-white rounded-lg font-medium text-sm hover:bg-denali-700 transition-colors"
+            >
+              Enter Demo Mode
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
       <div className="w-full max-w-md">
-        {/* Logo / Brand */}
+        {/* Logo */}
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-gray-900">
             <span className="text-denali-600">Denali</span>.health
@@ -110,75 +380,39 @@ export default function LoginScreen({ onLogin }) {
           </p>
         </div>
 
-        {/* Login Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
-          <h2 className="text-lg font-bold text-gray-900 mb-1">Provider Sign In</h2>
-          <p className="text-sm text-gray-500 mb-6">
-            Enter your NPI to verify your identity and begin.
-          </p>
-
-          {/* NPI Input */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              National Provider Identifier (NPI)
-            </label>
-            <input
-              type="text"
-              value={npi}
-              onChange={handleNpiChange}
-              onBlur={handleBlur}
-              onKeyDown={handleKeyDown}
-              placeholder="1234567890"
-              maxLength={10}
-              autoFocus
-              disabled={loading}
-              className={`w-full px-4 py-3 border rounded-lg font-mono text-base tracking-wider ${
-                error ? 'border-red-400 bg-red-50' : 'border-gray-300'
-              } focus:ring-2 focus:ring-denali-500 focus:border-denali-500 disabled:opacity-50`}
-            />
-            {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
+        {/* Auth Card */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          {/* Tabs */}
+          <div className="flex border-b border-gray-200">
+            <button
+              onClick={() => setTab('signin')}
+              className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                tab === 'signin'
+                  ? 'text-denali-600 border-b-2 border-denali-600 bg-white'
+                  : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              Sign In
+            </button>
+            <button
+              onClick={() => setTab('signup')}
+              className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                tab === 'signup'
+                  ? 'text-denali-600 border-b-2 border-denali-600 bg-white'
+                  : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              {inviteToken ? 'Accept Invite' : 'Provider Sign Up'}
+            </button>
           </div>
 
-          {/* Provider preview */}
-          {providerPreview && !error && (
-            <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm">
-              <p className="font-medium text-emerald-800">
-                {providerPreview.name}
-                {providerPreview.credential && (
-                  <span className="text-emerald-600">, {providerPreview.credential}</span>
-                )}
-              </p>
-              <p className="text-emerald-600 text-xs">{providerPreview.specialty}</p>
-              {providerPreview.address && (
-                <p className="text-emerald-600 text-xs mt-1">{providerPreview.address}</p>
-              )}
-            </div>
-          )}
-
-          {/* Sign In Button */}
-          <button
-            onClick={handleSignIn}
-            disabled={loading || !npi}
-            className="w-full px-4 py-3 bg-denali-600 text-white rounded-lg font-medium text-sm hover:bg-denali-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? (
-              <span className="flex items-center justify-center gap-2">
-                <Spinner size="sm" label="" />
-                Verifying NPI...
-              </span>
+          {/* Form Content */}
+          <div className="p-8">
+            {tab === 'signin' ? (
+              <SignInForm onDemoMode={() => onDemoLogin(DEMO_PROVIDER)} />
             ) : (
-              'Sign In'
+              <ProviderSignUpForm inviteToken={inviteToken} />
             )}
-          </button>
-
-          {/* Demo Mode */}
-          <div className="mt-6 pt-4 border-t border-gray-100 text-center">
-            <button
-              onClick={handleDemoMode}
-              className="text-xs text-gray-400 hover:text-denali-600 transition-colors"
-            >
-              Enter Demo Mode (no NPI required)
-            </button>
           </div>
         </div>
 
