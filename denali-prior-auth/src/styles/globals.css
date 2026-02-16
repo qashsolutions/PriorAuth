@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply min-h-screen;
+  }
+}
+
+@layer components {
+  .status-pass {
+    @apply bg-emerald-50 text-emerald-800 border-emerald-200;
+  }
+  .status-fail {
+    @apply bg-red-50 text-red-800 border-red-200;
+  }
+  .status-warn {
+    @apply bg-amber-50 text-amber-800 border-amber-200;
+  }
+  .status-info {
+    @apply bg-blue-50 text-blue-800 border-blue-200;
+  }
+  .status-loading {
+    @apply bg-gray-50 text-gray-500 border-gray-200;
+  }
+}
+
+/* Print styles for medical necessity letter */
+@media print {
+  body {
+    background: white;
+    color: black;
+    font-size: 12pt;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+}

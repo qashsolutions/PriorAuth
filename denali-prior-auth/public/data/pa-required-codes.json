@@ -1,0 +1,168 @@
+{
+  "metadata": {
+    "description": "CMS Prior Authorization Required — Procedure Code Lists",
+    "lastUpdated": "2026-01-01",
+    "sources": [
+      "CMS-1716-F Hospital OPD PA (effective 2020)",
+      "ASC PA Demonstration (effective Dec 2025, 10 states)",
+      "WISeR Model (effective Jan 2026, 6 states)",
+      "DMEPOS PA Required List"
+    ]
+  },
+  "codes": [
+    {
+      "hcpcs": "77373",
+      "description": "SBRT delivery",
+      "list": "hospital_opd",
+      "effectiveDate": "2020-07-01",
+      "states": null
+    },
+    {
+      "hcpcs": "77385",
+      "description": "IMRT delivery, simple",
+      "list": "hospital_opd",
+      "effectiveDate": "2020-07-01",
+      "states": null
+    },
+    {
+      "hcpcs": "77386",
+      "description": "IMRT delivery, complex",
+      "list": "hospital_opd",
+      "effectiveDate": "2020-07-01",
+      "states": null
+    },
+    {
+      "hcpcs": "77401",
+      "description": "Radiation treatment delivery, superficial",
+      "list": "hospital_opd",
+      "effectiveDate": "2020-07-01",
+      "states": null
+    },
+    {
+      "hcpcs": "77402",
+      "description": "Radiation treatment delivery, MeV",
+      "list": "hospital_opd",
+      "effectiveDate": "2020-07-01",
+      "states": null
+    },
+    {
+      "hcpcs": "77412",
+      "description": "Radiation treatment delivery, complex MeV",
+      "list": "hospital_opd",
+      "effectiveDate": "2020-07-01",
+      "states": null
+    },
+    {
+      "hcpcs": "77423",
+      "description": "Neutron beam treatment delivery",
+      "list": "hospital_opd",
+      "effectiveDate": "2020-07-01",
+      "states": null
+    },
+    {
+      "hcpcs": "77520",
+      "description": "Proton treatment, simple",
+      "list": "hospital_opd",
+      "effectiveDate": "2020-07-01",
+      "states": null
+    },
+    {
+      "hcpcs": "77522",
+      "description": "Proton treatment, simple with compensation",
+      "list": "hospital_opd",
+      "effectiveDate": "2020-07-01",
+      "states": null
+    },
+    {
+      "hcpcs": "77523",
+      "description": "Proton treatment, intermediate",
+      "list": "hospital_opd",
+      "effectiveDate": "2020-07-01",
+      "states": null
+    },
+    {
+      "hcpcs": "77525",
+      "description": "Proton treatment, complex",
+      "list": "hospital_opd",
+      "effectiveDate": "2020-07-01",
+      "states": null
+    },
+    {
+      "hcpcs": "78429",
+      "description": "SPECT myocardial perfusion, multiple studies",
+      "list": "wiser",
+      "effectiveDate": "2026-01-01",
+      "states": ["NJ", "OH", "OK", "TX", "AZ", "WA"]
+    },
+    {
+      "hcpcs": "78816",
+      "description": "PET imaging for tumor, whole body",
+      "list": "hospital_opd",
+      "effectiveDate": "2020-07-01",
+      "states": null
+    },
+    {
+      "hcpcs": "78815",
+      "description": "PET imaging for tumor, limited area",
+      "list": "hospital_opd",
+      "effectiveDate": "2020-07-01",
+      "states": null
+    },
+    {
+      "hcpcs": "78814",
+      "description": "PET imaging for tumor, with CT, limited",
+      "list": "hospital_opd",
+      "effectiveDate": "2020-07-01",
+      "states": null
+    },
+    {
+      "hcpcs": "70553",
+      "description": "MRI brain without and with contrast",
+      "list": "hospital_opd",
+      "effectiveDate": "2020-07-01",
+      "states": null
+    },
+    {
+      "hcpcs": "70551",
+      "description": "MRI brain without contrast",
+      "list": "hospital_opd",
+      "effectiveDate": "2020-07-01",
+      "states": null
+    },
+    {
+      "hcpcs": "74177",
+      "description": "CT abdomen and pelvis with contrast",
+      "list": "hospital_opd",
+      "effectiveDate": "2020-07-01",
+      "states": null
+    },
+    {
+      "hcpcs": "74178",
+      "description": "CT abdomen and pelvis without and with contrast",
+      "list": "hospital_opd",
+      "effectiveDate": "2020-07-01",
+      "states": null
+    },
+    {
+      "hcpcs": "71260",
+      "description": "CT chest with contrast",
+      "list": "hospital_opd",
+      "effectiveDate": "2020-07-01",
+      "states": null
+    },
+    {
+      "hcpcs": "71275",
+      "description": "CT angiography, chest",
+      "list": "hospital_opd",
+      "effectiveDate": "2020-07-01",
+      "states": null
+    },
+    {
+      "hcpcs": "E0691",
+      "description": "Ultraviolet light therapy system, panel",
+      "list": "dmepos",
+      "effectiveDate": "2023-01-01",
+      "states": null
+    }
+  ]
+}
