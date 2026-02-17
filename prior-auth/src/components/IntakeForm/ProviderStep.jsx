@@ -4,7 +4,12 @@ import { lookupNPI } from '../../services/nppes';
 
 export default function ProviderStep({ data, onChange, onNext, onBack }) {
   const [errors, setErrors] = useState({});
-  const [npiLookup, setNpiLookup] = useState(null);
+  // If provider info is already pre-filled (demo mode), show it immediately
+  const [npiLookup, setNpiLookup] = useState(
+    data.providerName
+      ? { found: true, active: true, name: data.providerName, specialty: data.providerSpecialty, address: data.providerAddress }
+      : null
+  );
   const [lookingUp, setLookingUp] = useState(false);
 
   function handleChange(field, value) {

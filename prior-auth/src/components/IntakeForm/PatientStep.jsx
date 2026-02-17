@@ -27,7 +27,9 @@ export default function PatientStep({ data, onChange, onNext }) {
 
   function handleNext() {
     if (validate()) {
-      onChange({ ...data, mbi: data.mbi?.replace(/[-\s]/g, '').toUpperCase() });
+      // Store MBI in formatted form (with hyphens) — e.g. 1EG4-TE5-MK73
+      const cleaned = data.mbi?.replace(/[-\s]/g, '').toUpperCase();
+      onChange({ ...data, mbi: formatMBI(cleaned) });
       onNext();
     }
   }

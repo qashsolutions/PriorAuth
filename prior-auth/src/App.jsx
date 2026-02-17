@@ -433,7 +433,7 @@ export default function App() {
 
       {/* Main Content */}
       <main className="max-w-5xl mx-auto px-4 py-8">
-        {state.view === 'intake' && <IntakeForm onSubmit={handleSubmit} />}
+        {state.view === 'intake' && <IntakeForm onSubmit={handleSubmit} isDemo={!!profile?.isDemo} />}
 
         {state.view === 'processing' && (
           <div className="flex flex-col items-center justify-center py-20">

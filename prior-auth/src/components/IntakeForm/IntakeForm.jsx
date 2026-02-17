@@ -26,9 +26,36 @@ const INITIAL_DATA = {
   clinicalSummary: '',
 };
 
-export default function IntakeForm({ onSubmit }) {
+const DEMO_CASE_DATA = {
+  // Patient — synthetic MBI (valid format, with hyphens)
+  mbi: '1EG4-TE5-MK73',
+  firstName: 'James',
+  lastName: 'Mitchell',
+  dob: '1952-03-14',
+  // Provider — Luhn-valid NPI with pre-filled info (no NPPES lookup needed)
+  npi: '1497758544',
+  practiceZip: '78701',
+  providerName: 'Dr. Sarah Chen, MD',
+  providerSpecialty: 'Radiation Oncology',
+  providerAddress: '1201 Medical Pkwy, Austin, TX 78701',
+  // Clinical — IMRT for lung cancer (common rad-onc scenario)
+  icd10: 'C34.90',
+  icd10Description: 'Malignant neoplasm of unspecified part of unspecified bronchus or lung',
+  cpt: '77385',
+  placeOfService: '22',
+  clinicalSummary:
+    'Patient is a 73-year-old male diagnosed with Stage IIIA non-small cell lung cancer ' +
+    '(adenocarcinoma) confirmed by CT-guided biopsy on 01/15/2026. PET/CT shows FDG-avid ' +
+    'right upper lobe mass (4.2 cm) with ipsilateral mediastinal lymph node involvement. ' +
+    'No distant metastases. ECOG performance status 1. Treatment plan: concurrent ' +
+    'chemoradiation with IMRT (60 Gy in 30 fractions) followed by durvalumab consolidation ' +
+    'per PACIFIC protocol. IMRT selected over 3D-CRT to minimize dose to heart, esophagus, ' +
+    'and contralateral lung given proximity to mediastinal structures.',
+};
+
+export default function IntakeForm({ onSubmit, isDemo }) {
   const [step, setStep] = useState(0);
-  const [data, setData] = useState(INITIAL_DATA);
+  const [data, setData] = useState(isDemo ? DEMO_CASE_DATA : INITIAL_DATA);
 
   function handleSubmit() {
     onSubmit(data);
