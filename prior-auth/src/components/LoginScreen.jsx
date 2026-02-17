@@ -95,28 +95,18 @@ function SignInForm({ onDemoMode }) {
         return true; // Already fully set up
       }
 
-      // 3. Create practice + profile (missing — orphaned user or first-time)
-      const { data: practice, error: practiceErr } = await supabase.from('practices').insert({
-        npi: '0000000000',
-        name: 'Demo Oncology Practice',
-        specialty: 'Radiation Oncology',
-        address: '100 Demo Way, Austin, TX 78701',
-      }).select().single();
-
-      if (practiceErr) {
-        setError('Practice setup failed: ' + practiceErr.message);
-        return false;
-      }
-
-      const { error: profileErr } = await supabase.from('profiles').insert({
-        id: userId,
-        practice_id: practice.id,
-        full_name: 'Demo Admin',
-        role: 'admin',
+      // 3. Create practice + profile atomically via RPC (bypasses RLS chicken-and-egg)
+      const { error: onboardErr } = await supabase.rpc('onboard_practice', {
+        p_npi: '0000000000',
+        p_name: 'Demo Oncology Practice',
+        p_specialty: 'Radiation Oncology',
+        p_address: '100 Demo Way, Austin, TX 78701',
+        p_full_name: 'Demo Admin',
+        p_role: 'admin',
       });
 
-      if (profileErr) {
-        setError('Profile setup failed: ' + profileErr.message);
+      if (onboardErr) {
+        setError('Practice setup failed: ' + onboardErr.message);
         return false;
       }
 
@@ -346,22 +336,19 @@ function ProviderSignUpForm({ inviteToken }) {
           role: invitation.role,
         }, { userId, practiceId: invitation.practice_id });
       } else {
-        // Provider signup: create practice + profile
-        const { data: practice } = await supabase.from('practices').insert({
-          npi,
-          name: npiInfo.name,
-          specialty: npiInfo.specialty,
-          address: npiInfo.address,
-        }).select().single();
-
-        await supabase.from('profiles').insert({
-          id: userId,
-          practice_id: practice.id,
-          full_name: npiInfo.name,
-          role: 'provider',
+        // Provider signup: create practice + profile atomically via RPC
+        const { data: practiceId, error: onboardErr } = await supabase.rpc('onboard_practice', {
+          p_npi: npi,
+          p_name: npiInfo.name,
+          p_specialty: npiInfo.specialty,
+          p_address: npiInfo.address,
+          p_full_name: npiInfo.name,
+          p_role: 'provider',
         });
 
-        await logAction('login', { method: 'signup', npi }, { userId, practiceId: practice.id });
+        if (onboardErr) throw onboardErr;
+
+        await logAction('login', { method: 'signup', npi }, { userId, practiceId });
       }
     } catch (err) {
       setError('Account created but profile setup failed. Please contact support.');
