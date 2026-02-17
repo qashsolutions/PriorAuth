@@ -147,27 +147,39 @@ export default function App() {
   }, []);
 
   async function loadProfile(userId) {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*, practices(*)')
-      .eq('id', userId)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*, practices(*)')
+        .eq('id', userId)
+        .maybeSingle();
 
-    if (data) {
-      const p = {
-        userId: data.id,
-        practiceId: data.practice_id,
-        name: data.full_name,
-        role: data.role,
-        specialty: data.practices?.specialty || null,
-        npi: data.practices?.npi || null,
-        practiceName: data.practices?.name || null,
-        address: data.practices?.address || null,
-        isDemo: false,
-      };
-      setProfile(p);
+      if (error) {
+        // 500 from RLS when profile row is missing (orphaned auth user) — not fatal,
+        // the login screen's seed flow will create the missing rows and retry.
+        console.warn('Profile load failed (will retry after seed):', error.message);
+        setAuthLoading(false);
+        return;
+      }
 
-      await logAction('login', { method: 'session' }, { userId: p.userId, practiceId: p.practiceId });
+      if (data) {
+        const p = {
+          userId: data.id,
+          practiceId: data.practice_id,
+          name: data.full_name,
+          role: data.role,
+          specialty: data.practices?.specialty || null,
+          npi: data.practices?.npi || null,
+          practiceName: data.practices?.name || null,
+          address: data.practices?.address || null,
+          isDemo: false,
+        };
+        setProfile(p);
+
+        await logAction('login', { method: 'session' }, { userId: p.userId, practiceId: p.practiceId });
+      }
+    } catch (err) {
+      console.warn('Profile load exception:', err);
     }
     setAuthLoading(false);
   }
