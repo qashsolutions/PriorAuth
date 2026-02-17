@@ -36,51 +36,47 @@ function SignInForm({ onDemoMode }) {
   }, []);
 
   // Idempotent seed: ensure test auth user + practice + profile all exist.
-  // Handles the "orphaned user" case where auth user exists but profile doesn't.
+  // Always tries sign-in first to get a real session, then falls back to sign-up.
   async function seedTestAccount() {
     try {
       let userId;
 
-      // 1. Try to create the auth user
-      const { data: authData, error: signUpError } = await supabase.auth.signUp({
+      // 1. Try sign-in first (works if user already exists)
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email: TEST_EMAIL,
         password: TEST_PASSWORD,
-        options: { data: { is_test: true } },
       });
 
-      if (signUpError) {
-        // "User already registered" is expected for orphaned users — sign in instead
-        if (signUpError.message.includes('already')) {
-          const { data: sid, error: siErr } = await supabase.auth.signInWithPassword({
-            email: TEST_EMAIL,
-            password: TEST_PASSWORD,
-          });
-          if (siErr) {
-            setError('Test account exists but sign-in failed: ' + siErr.message);
-            return false;
-          }
-          userId = sid.user?.id;
-        } else {
+      if (signInError) {
+        // User doesn't exist yet — create it
+        const { data: authData, error: signUpError } = await supabase.auth.signUp({
+          email: TEST_EMAIL,
+          password: TEST_PASSWORD,
+          options: { data: { is_test: true } },
+        });
+
+        if (signUpError) {
           setError('Could not create test account: ' + signUpError.message);
           return false;
         }
-      } else {
+
         userId = authData.user?.id;
-        if (!userId) {
-          setError('Signup succeeded but no user returned. Disable "Confirm email" in Supabase Auth → Providers → Email.');
-          return false;
-        }
+
         // If signUp didn't auto-sign-in (email confirmation ON), sign in explicitly
         if (!authData.session) {
-          const { error: siErr } = await supabase.auth.signInWithPassword({
+          const { data: retryData, error: retryErr } = await supabase.auth.signInWithPassword({
             email: TEST_EMAIL,
             password: TEST_PASSWORD,
           });
-          if (siErr) {
+          if (retryErr) {
             setError('Account created but cannot sign in. Disable "Confirm email" in Supabase Auth → Providers → Email.');
             return false;
           }
+          userId = retryData.user?.id;
         }
+      } else {
+        // Sign-in succeeded — we have a real session
+        userId = signInData.user?.id;
       }
 
       if (!userId) {
@@ -88,7 +84,7 @@ function SignInForm({ onDemoMode }) {
         return false;
       }
 
-      // 2. Check if profile already exists (use maybeSingle to avoid error on 0 rows)
+      // 2. Check if profile already exists
       const { data: existingProfile } = await supabase
         .from('profiles')
         .select('id')
@@ -99,7 +95,7 @@ function SignInForm({ onDemoMode }) {
         return true; // Already fully set up
       }
 
-      // 3. Create practice + profile (profile is missing — orphaned user or first-time)
+      // 3. Create practice + profile (missing — orphaned user or first-time)
       const { data: practice, error: practiceErr } = await supabase.from('practices').insert({
         npi: '0000000000',
         name: 'Demo Oncology Practice',
