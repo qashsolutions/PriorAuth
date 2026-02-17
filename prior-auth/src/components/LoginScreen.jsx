@@ -35,10 +35,13 @@ function SignInForm({ onDemoMode }) {
     setError(null);
   }, []);
 
-  // One-time seed: create the test account + practice + profile if it doesn't exist
+  // Idempotent seed: ensure test auth user + practice + profile all exist.
+  // Handles the "orphaned user" case where auth user exists but profile doesn't.
   async function seedTestAccount() {
     try {
-      // 1. Create auth user
+      let userId;
+
+      // 1. Try to create the auth user
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: TEST_EMAIL,
         password: TEST_PASSWORD,
@@ -46,32 +49,57 @@ function SignInForm({ onDemoMode }) {
       });
 
       if (signUpError) {
-        setError('Could not create test account: ' + signUpError.message);
-        return false;
-      }
-
-      const userId = authData.user?.id;
-      if (!userId) {
-        setError('Test account created — check email to confirm, then sign in.');
-        return false;
-      }
-
-      // 2. If signUp didn't auto-sign-in (email confirmation is ON), try explicit sign-in
-      if (!authData.session) {
-        const { error: signInErr } = await supabase.auth.signInWithPassword({
-          email: TEST_EMAIL,
-          password: TEST_PASSWORD,
-        });
-        if (signInErr) {
-          setError(
-            'Account created but cannot sign in automatically. '
-            + 'Go to Supabase → Auth → Providers → Email → turn OFF "Confirm email", then try again.'
-          );
+        // "User already registered" is expected for orphaned users — sign in instead
+        if (signUpError.message.includes('already')) {
+          const { data: sid, error: siErr } = await supabase.auth.signInWithPassword({
+            email: TEST_EMAIL,
+            password: TEST_PASSWORD,
+          });
+          if (siErr) {
+            setError('Test account exists but sign-in failed: ' + siErr.message);
+            return false;
+          }
+          userId = sid.user?.id;
+        } else {
+          setError('Could not create test account: ' + signUpError.message);
           return false;
+        }
+      } else {
+        userId = authData.user?.id;
+        if (!userId) {
+          setError('Signup succeeded but no user returned. Disable "Confirm email" in Supabase Auth → Providers → Email.');
+          return false;
+        }
+        // If signUp didn't auto-sign-in (email confirmation ON), sign in explicitly
+        if (!authData.session) {
+          const { error: siErr } = await supabase.auth.signInWithPassword({
+            email: TEST_EMAIL,
+            password: TEST_PASSWORD,
+          });
+          if (siErr) {
+            setError('Account created but cannot sign in. Disable "Confirm email" in Supabase Auth → Providers → Email.');
+            return false;
+          }
         }
       }
 
-      // 3. Session is active — RLS allows inserts now
+      if (!userId) {
+        setError('Could not determine user ID for test account.');
+        return false;
+      }
+
+      // 2. Check if profile already exists (use maybeSingle to avoid error on 0 rows)
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (existingProfile) {
+        return true; // Already fully set up
+      }
+
+      // 3. Create practice + profile (profile is missing — orphaned user or first-time)
       const { data: practice, error: practiceErr } = await supabase.from('practices').insert({
         npi: '0000000000',
         name: 'Demo Oncology Practice',
@@ -80,7 +108,7 @@ function SignInForm({ onDemoMode }) {
       }).select().single();
 
       if (practiceErr) {
-        setError('Account created but practice setup failed: ' + practiceErr.message);
+        setError('Practice setup failed: ' + practiceErr.message);
         return false;
       }
 
@@ -92,7 +120,7 @@ function SignInForm({ onDemoMode }) {
       });
 
       if (profileErr) {
-        setError('Account created but profile setup failed: ' + profileErr.message);
+        setError('Profile setup failed: ' + profileErr.message);
         return false;
       }
 
@@ -113,25 +141,26 @@ function SignInForm({ onDemoMode }) {
     setLoading(true);
     setError(null);
 
-    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
-
-    if (authError) {
-      // If test account doesn't exist yet, offer to create it
-      if (email === TEST_EMAIL && authError.message === 'Invalid login credentials') {
-        setError(null);
-        setLoading(true);
-        const created = await seedTestAccount();
-        if (created) {
-          // Retry sign-in after seeding
-          const { error: retryError } = await supabase.auth.signInWithPassword({ email, password });
-          if (retryError) {
-            setError('Test account created but sign-in failed. Try again.');
-          }
-        }
+    // For test account, always go through seed to ensure practice+profile exist.
+    // This handles both fresh accounts AND orphaned users (auth exists, profile missing).
+    if (email === TEST_EMAIL) {
+      const ready = await seedTestAccount();
+      if (!ready) {
         setLoading(false);
         return;
       }
+      // seedTestAccount already signed us in — but the auth listener's loadProfile
+      // may have fired before the profile rows were created. Refresh the session
+      // to re-trigger loadProfile now that the profile definitely exists.
+      await supabase.auth.refreshSession();
+      setLoading(false);
+      return;
+    }
 
+    // Regular sign-in for non-test accounts
+    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+
+    if (authError) {
       setError(authError.message === 'Invalid login credentials'
         ? 'Invalid email or password. Check your credentials or sign up first.'
         : authError.message);
