@@ -246,7 +246,6 @@ export default function App() {
         dob: caseData.dob,
         providerNpi: caseData.npi,
         providerName: caseData.providerName,
-        isDemo: !!profile?.isDemo,
       })
         .then((result) => dispatch({ type: 'SET_RESULT', key: 'eligibility', payload: { result } }))
         .catch((err) => dispatch({ type: 'SET_RESULT', key: 'eligibility', payload: { error: err.message } })),

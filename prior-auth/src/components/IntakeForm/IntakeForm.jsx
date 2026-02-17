@@ -27,12 +27,13 @@ const INITIAL_DATA = {
 };
 
 const DEMO_CASE_DATA = {
-  // Patient — synthetic MBI (valid format, with hyphens)
-  mbi: '1EG4-TE5-MK73',
-  firstName: 'James',
-  lastName: 'Mitchell',
-  dob: '1952-03-14',
-  // Provider — Luhn-valid NPI with pre-filled info (no NPPES lookup needed)
+  // Patient — Stedi CMS predefined test subscriber (must match exactly)
+  // See: https://www.stedi.com/docs/api-reference/healthcare/mock-requests-eligibility-checks
+  mbi: '1AA2-CC3-DD45',
+  firstName: 'Jane',
+  lastName: 'Doe',
+  dob: '1900-01-01',
+  // Provider — Luhn-valid NPI with pre-filled info (any NPI works for Stedi test mode)
   npi: '1497758544',
   practiceZip: '78701',
   providerName: 'Dr. Sarah Chen, MD',
@@ -44,13 +45,13 @@ const DEMO_CASE_DATA = {
   cpt: '77385',
   placeOfService: '22',
   clinicalSummary:
-    'Patient is a 73-year-old male diagnosed with Stage IIIA non-small cell lung cancer ' +
-    '(adenocarcinoma) confirmed by CT-guided biopsy on 01/15/2026. PET/CT shows FDG-avid ' +
-    'right upper lobe mass (4.2 cm) with ipsilateral mediastinal lymph node involvement. ' +
-    'No distant metastases. ECOG performance status 1. Treatment plan: concurrent ' +
-    'chemoradiation with IMRT (60 Gy in 30 fractions) followed by durvalumab consolidation ' +
-    'per PACIFIC protocol. IMRT selected over 3D-CRT to minimize dose to heart, esophagus, ' +
-    'and contralateral lung given proximity to mediastinal structures.',
+    'Patient diagnosed with Stage IIIA non-small cell lung cancer (adenocarcinoma) confirmed ' +
+    'by CT-guided biopsy. PET/CT shows FDG-avid right upper lobe mass (4.2 cm) with ' +
+    'ipsilateral mediastinal lymph node involvement. No distant metastases. ECOG performance ' +
+    'status 1. Treatment plan: concurrent chemoradiation with IMRT (60 Gy in 30 fractions) ' +
+    'followed by durvalumab consolidation per PACIFIC protocol. IMRT selected over 3D-CRT ' +
+    'to minimize dose to heart, esophagus, and contralateral lung given proximity to ' +
+    'mediastinal structures.',
 };
 
 export default function IntakeForm({ onSubmit, isDemo }) {
