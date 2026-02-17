@@ -16,11 +16,6 @@ const DEMO_PROVIDER = {
   isDemo: true,
 };
 
-// ─── Test Credentials ───────────────────────────────────────────
-
-const TEST_EMAIL = 'demo@priorauth.test';
-const TEST_PASSWORD = 'Demo1234!';
-
 // ─── Sign In Tab ────────────────────────────────────────────────
 
 function SignInForm({ onDemoMode }) {
@@ -28,94 +23,6 @@ function SignInForm({ onDemoMode }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-
-  const fillTestCredentials = useCallback(() => {
-    setEmail(TEST_EMAIL);
-    setPassword(TEST_PASSWORD);
-    setError(null);
-  }, []);
-
-  // Idempotent seed: ensure test auth user + practice + profile all exist.
-  // Always tries sign-in first to get a real session, then falls back to sign-up.
-  async function seedTestAccount() {
-    try {
-      let userId;
-
-      // 1. Try sign-in first (works if user already exists)
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: TEST_EMAIL,
-        password: TEST_PASSWORD,
-      });
-
-      if (signInError) {
-        // User doesn't exist yet — create it
-        const { data: authData, error: signUpError } = await supabase.auth.signUp({
-          email: TEST_EMAIL,
-          password: TEST_PASSWORD,
-          options: { data: { is_test: true } },
-        });
-
-        if (signUpError) {
-          setError('Could not create test account: ' + signUpError.message);
-          return false;
-        }
-
-        userId = authData.user?.id;
-
-        // If signUp didn't auto-sign-in (email confirmation ON), sign in explicitly
-        if (!authData.session) {
-          const { data: retryData, error: retryErr } = await supabase.auth.signInWithPassword({
-            email: TEST_EMAIL,
-            password: TEST_PASSWORD,
-          });
-          if (retryErr) {
-            setError('Account created but cannot sign in. Disable "Confirm email" in Supabase Auth → Providers → Email.');
-            return false;
-          }
-          userId = retryData.user?.id;
-        }
-      } else {
-        // Sign-in succeeded — we have a real session
-        userId = signInData.user?.id;
-      }
-
-      if (!userId) {
-        setError('Could not determine user ID for test account.');
-        return false;
-      }
-
-      // 2. Check if profile already exists
-      const { data: existingProfile } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (existingProfile) {
-        return true; // Already fully set up
-      }
-
-      // 3. Create practice + profile atomically via RPC (bypasses RLS chicken-and-egg)
-      const { error: onboardErr } = await supabase.rpc('onboard_practice', {
-        p_npi: '0000000000',
-        p_name: 'Demo Oncology Practice',
-        p_specialty: 'Radiation Oncology',
-        p_address: '100 Demo Way, Austin, TX 78701',
-        p_full_name: 'Demo Admin',
-        p_role: 'admin',
-      });
-
-      if (onboardErr) {
-        setError('Practice setup failed: ' + onboardErr.message);
-        return false;
-      }
-
-      return true;
-    } catch {
-      setError('Failed to seed test account.');
-      return false;
-    }
-  }
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
@@ -127,23 +34,6 @@ function SignInForm({ onDemoMode }) {
     setLoading(true);
     setError(null);
 
-    // For test account, always go through seed to ensure practice+profile exist.
-    // This handles both fresh accounts AND orphaned users (auth exists, profile missing).
-    if (email === TEST_EMAIL) {
-      const ready = await seedTestAccount();
-      if (!ready) {
-        setLoading(false);
-        return;
-      }
-      // seedTestAccount already signed us in — but the auth listener's loadProfile
-      // may have fired before the profile rows were created. Refresh the session
-      // to re-trigger loadProfile now that the profile definitely exists.
-      await supabase.auth.refreshSession();
-      setLoading(false);
-      return;
-    }
-
-    // Regular sign-in for non-test accounts
     const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
     if (authError) {
@@ -163,28 +53,6 @@ function SignInForm({ onDemoMode }) {
       <p className="text-sm text-gray-500">
         Sign in with your existing account.
       </p>
-
-      {/* Test credentials box */}
-      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-        <div className="flex items-center justify-between mb-1.5">
-          <p className="text-xs font-semibold text-blue-800">Test Account</p>
-          <button
-            type="button"
-            onClick={fillTestCredentials}
-            className="text-[11px] font-medium text-blue-600 hover:text-blue-800 underline underline-offset-2"
-          >
-            Use these
-          </button>
-        </div>
-        <div className="grid grid-cols-2 gap-2 text-xs text-blue-700 font-mono">
-          <div>
-            <span className="text-blue-500">email:</span> {TEST_EMAIL}
-          </div>
-          <div>
-            <span className="text-blue-500">pass:</span> {TEST_PASSWORD}
-          </div>
-        </div>
-      </div>
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
