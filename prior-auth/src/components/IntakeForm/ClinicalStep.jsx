@@ -11,7 +11,12 @@ const PLACE_OF_SERVICE = [
 
 export default function ClinicalStep({ data, onChange, onSubmit, onBack }) {
   const [errors, setErrors] = useState({});
-  const [icd10Info, setIcd10Info] = useState(null);
+  // If ICD-10 description is already pre-filled (demo mode), show it immediately
+  const [icd10Info, setIcd10Info] = useState(
+    data.icd10Description
+      ? { valid: true, billable: true, code: data.icd10, description: data.icd10Description }
+      : null
+  );
   const [lookingUp, setLookingUp] = useState(false);
 
   function handleChange(field, value) {
