@@ -38,6 +38,7 @@ function SignInForm({ onDemoMode }) {
   // One-time seed: create the test account + practice + profile if it doesn't exist
   async function seedTestAccount() {
     try {
+      // 1. Create auth user
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: TEST_EMAIL,
         password: TEST_PASSWORD,
@@ -55,21 +56,44 @@ function SignInForm({ onDemoMode }) {
         return false;
       }
 
-      // Create test practice + profile
-      const { data: practice } = await supabase.from('practices').insert({
+      // 2. If signUp didn't auto-sign-in (email confirmation is ON), try explicit sign-in
+      if (!authData.session) {
+        const { error: signInErr } = await supabase.auth.signInWithPassword({
+          email: TEST_EMAIL,
+          password: TEST_PASSWORD,
+        });
+        if (signInErr) {
+          setError(
+            'Account created but cannot sign in automatically. '
+            + 'Go to Supabase → Auth → Providers → Email → turn OFF "Confirm email", then try again.'
+          );
+          return false;
+        }
+      }
+
+      // 3. Session is active — RLS allows inserts now
+      const { data: practice, error: practiceErr } = await supabase.from('practices').insert({
         npi: '0000000000',
         name: 'Demo Oncology Practice',
         specialty: 'Radiation Oncology',
         address: '100 Demo Way, Austin, TX 78701',
       }).select().single();
 
-      if (practice) {
-        await supabase.from('profiles').insert({
-          id: userId,
-          practice_id: practice.id,
-          full_name: 'Demo Admin',
-          role: 'admin',
-        });
+      if (practiceErr) {
+        setError('Account created but practice setup failed: ' + practiceErr.message);
+        return false;
+      }
+
+      const { error: profileErr } = await supabase.from('profiles').insert({
+        id: userId,
+        practice_id: practice.id,
+        full_name: 'Demo Admin',
+        role: 'admin',
+      });
+
+      if (profileErr) {
+        setError('Account created but profile setup failed: ' + profileErr.message);
+        return false;
       }
 
       return true;
