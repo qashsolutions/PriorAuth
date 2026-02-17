@@ -16,13 +16,68 @@ const DEMO_PROVIDER = {
   isDemo: true,
 };
 
+// ─── Test Credentials ───────────────────────────────────────────
+
+const TEST_EMAIL = 'demo@priorauth.test';
+const TEST_PASSWORD = 'Demo1234!';
+
 // ─── Sign In Tab ────────────────────────────────────────────────
 
-function SignInForm({ onDemoMode, setGlobalError }) {
+function SignInForm({ onDemoMode }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  const fillTestCredentials = useCallback(() => {
+    setEmail(TEST_EMAIL);
+    setPassword(TEST_PASSWORD);
+    setError(null);
+  }, []);
+
+  // One-time seed: create the test account + practice + profile if it doesn't exist
+  async function seedTestAccount() {
+    try {
+      const { data: authData, error: signUpError } = await supabase.auth.signUp({
+        email: TEST_EMAIL,
+        password: TEST_PASSWORD,
+        options: { data: { is_test: true } },
+      });
+
+      if (signUpError) {
+        setError('Could not create test account: ' + signUpError.message);
+        return false;
+      }
+
+      const userId = authData.user?.id;
+      if (!userId) {
+        setError('Test account created — check email to confirm, then sign in.');
+        return false;
+      }
+
+      // Create test practice + profile
+      const { data: practice } = await supabase.from('practices').insert({
+        npi: '0000000000',
+        name: 'Demo Oncology Practice',
+        specialty: 'Radiation Oncology',
+        address: '100 Demo Way, Austin, TX 78701',
+      }).select().single();
+
+      if (practice) {
+        await supabase.from('profiles').insert({
+          id: userId,
+          practice_id: practice.id,
+          full_name: 'Demo Admin',
+          role: 'admin',
+        });
+      }
+
+      return true;
+    } catch {
+      setError('Failed to seed test account.');
+      return false;
+    }
+  }
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
@@ -37,6 +92,22 @@ function SignInForm({ onDemoMode, setGlobalError }) {
     const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
 
     if (authError) {
+      // If test account doesn't exist yet, offer to create it
+      if (email === TEST_EMAIL && authError.message === 'Invalid login credentials') {
+        setError(null);
+        setLoading(true);
+        const created = await seedTestAccount();
+        if (created) {
+          // Retry sign-in after seeding
+          const { error: retryError } = await supabase.auth.signInWithPassword({ email, password });
+          if (retryError) {
+            setError('Test account created but sign-in failed. Try again.');
+          }
+        }
+        setLoading(false);
+        return;
+      }
+
       setError(authError.message === 'Invalid login credentials'
         ? 'Invalid email or password. Check your credentials or sign up first.'
         : authError.message);
@@ -50,6 +121,32 @@ function SignInForm({ onDemoMode, setGlobalError }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      <p className="text-sm text-gray-500">
+        Sign in with your existing account.
+      </p>
+
+      {/* Test credentials box */}
+      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+        <div className="flex items-center justify-between mb-1.5">
+          <p className="text-xs font-semibold text-blue-800">Test Account</p>
+          <button
+            type="button"
+            onClick={fillTestCredentials}
+            className="text-[11px] font-medium text-blue-600 hover:text-blue-800 underline underline-offset-2"
+          >
+            Use these
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-xs text-blue-700 font-mono">
+          <div>
+            <span className="text-blue-500">email:</span> {TEST_EMAIL}
+          </div>
+          <div>
+            <span className="text-blue-500">pass:</span> {TEST_PASSWORD}
+          </div>
+        </div>
+      </div>
+
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
         <input
@@ -91,7 +188,7 @@ function SignInForm({ onDemoMode, setGlobalError }) {
       <div className="pt-3 border-t border-gray-100 text-center">
         <button type="button" onClick={onDemoMode}
           className="text-xs text-gray-400 hover:text-denali-600 transition-colors">
-          Enter Demo Mode (no account required)
+          Skip login — Enter Demo Mode
         </button>
       </div>
     </form>
@@ -245,10 +342,14 @@ function ProviderSignUpForm({ inviteToken }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {invitation && (
+      {invitation ? (
         <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
           You&apos;ve been invited to join a practice as <strong>{invitation.role.toUpperCase()}</strong>.
         </div>
+      ) : (
+        <p className="text-sm text-gray-500">
+          New provider? Create an account with your NPI. Your practice info is auto-verified via NPPES.
+        </p>
       )}
 
       <div>
